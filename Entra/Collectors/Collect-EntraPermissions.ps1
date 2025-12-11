@@ -13,11 +13,11 @@ param(
     [string]$TestUser = $null  # Optional: specify a user to test with
 )
 # Import modules
-Import-Module (Join-Path $PSScriptRoot "..\..\Modules\Entra.Functions.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "..\..\Modules\Common.Functions.psm1") -Force
+
+Import-Module (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1") -Force
 
 # Get configuration
-$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "..\..\Modules\giam-config.json") -Force -Verbose
+$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "Modules\config.json") -Force -Verbose
 Initialize-DataPaths -Config $config
 
 # Setup paths
@@ -299,4 +299,4 @@ try {
 }
 }
 
-CollectEntraRoles #-TestUser "adminWPKV@novonordisk.com"
+CollectEntraRoles #-TestUser "user@example.com"

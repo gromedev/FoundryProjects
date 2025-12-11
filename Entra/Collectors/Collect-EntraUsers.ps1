@@ -9,11 +9,11 @@ param()
 
 # Import modules
 
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "..\..\Modules\Entra.Functions.psm1")) -Force
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "..\..\Modules\Common.Functions.psm1")) -Force
+
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
 
 # Get configuration
-$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "..\..\Modules\giam-config.json") -Force -Verbose
+$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "Modules\config.json") -Force -Verbose
 Initialize-DataPaths -Config $config
 
 write-host $PSScriptRoot
@@ -59,7 +59,7 @@ try {
     #$nextLink = "https://graph.microsoft.com/v1.0/users?`$select=userPrincipalName,id,accountEnabled,userType,assignedLicenses,customSecurityAttributes,createdDateTime,signInActivity,onPremisesSyncEnabled,onPremisesSamAccountName,passwordPolicies&`$top=$batchSize"
     
     <# Allows filtering groups
-    see giam-config.json:
+    see config.json:
         "TargetGroup": null,
         "ScopeToGroup": false
     #>

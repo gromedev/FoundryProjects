@@ -11,18 +11,18 @@
 param()
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "..\..\Modules\Entra.Functions.psm1")) -Force
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "..\..\Modules\Common.Functions.psm1")) -Force
+
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
 
 # Get configuration
-$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "..\..\Modules\giam-config.json") -Force -Verbose
+$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "Modules\config.json") -Force -Verbose
 Initialize-DataPaths -Config $config
 
 Write-Host $PSScriptRoot
 
 # Setup paths
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
-$tempPath = Join-Path $config.Paths.Temp "GIAM-EntraServicePrincipals_$timestamp.csv"
+$tempPath = Join-Path $config.Paths.Temp "EntraServicePrincipals_$timestamp.csv"
 
 # Initialize CSV with headers for service principals - verified properties from Graph API docs
 $csvHeader = "`"UserIdentifier`",`"accountEnabled`",`"addIns`",`"displayName`",`"appDescription`",`"appId`",`"appRoleAssignmentRequired`",`"deletedDateTime`",`"description`",`"oauth2PermissionScopes`",`"preferredSingleSignOnMode`",`"resourceSpecificApplicationPermissions`",`"servicePrincipalNames`",`"servicePrincipalType`",`"tags`""
@@ -96,7 +96,8 @@ try {
             
             $servicePrincipals | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
                 # Import module in parallel scope (EntraUserGroups pattern)
-                Import-Module "D:\ID-Tool\Modules\Entra.Functions.psm1" -Force
+                #Import-Module "C:\project\Modules\Entra.Functions.psm1" -Force
+                
                 
                 $sp = $_
                 $localBatchResults = $using:batchResults
@@ -217,7 +218,7 @@ try {
     Write-Host "Processing complete! Total service principals processed: $totalProcessed" -ForegroundColor Green
     
     # Move to final location
-    Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "GIAM-EntraServicePrincipals_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "EntraServicePrincipals_$timestamp.csv" -Config $config
 }
 catch {
     Write-Error "Error collecting Entra service principals: $_"

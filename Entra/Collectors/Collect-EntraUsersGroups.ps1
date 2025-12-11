@@ -7,11 +7,11 @@
 param()
 
 # Import modules
-Import-Module (Join-Path $PSScriptRoot "..\..\Modules\Entra.Functions.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "..\..\Modules\Common.Functions.psm1") -Force
+
+Import-Module (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1") -Force
 
 # Get configuration
-$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "..\..\Modules\giam-config.json") -Force -Verbose
+$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "Modules\config.json") -Force -Verbose
 Initialize-DataPaths -Config $config
 
 # Setup paths
@@ -66,7 +66,7 @@ try {
             
             $users | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
                 # Import module in parallel scope
-                Import-Module "D:\ID-Tool\Modules\Entra.Functions.psm1" -Force
+                Import-Module (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1") -Force
                 
                 $user = $_
                 $localBatchResults = $using:batchResults

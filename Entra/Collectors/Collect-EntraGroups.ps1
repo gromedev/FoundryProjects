@@ -10,18 +10,18 @@
 param()
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "..\..\Modules\Entra.Functions.psm1")) -Force
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "..\..\Modules\Common.Functions.psm1")) -Force
+
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
 
 # Get configuration
-$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "..\..\Modules\giam-config.json") -Force -Verbose
+$config = Get-Config -ConfigPath (Join-Path $PSScriptRoot "Modules\config.json") -Force -Verbose
 Initialize-DataPaths -Config $config
 
 write-host $PSScriptRoot
 
 # Setup paths
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
-$tempPath = Join-Path $config.Paths.Temp "GIAM-EntraGroups_$timestamp.csv"
+$tempPath = Join-Path $config.Paths.Temp "EntraGroups_$timestamp.csv"
 
 # Initialize CSV with headers - adapted for groups
 $csvHeader = "`"GroupIdentifier`",`"Id`",`"classification`",`"deletedDateTime`",`"description`",`"groupTypes`",`"mailEnabled`",`"membershipRule`",`"securityEnabled`",`"isAssignableToRole`""
@@ -203,7 +203,7 @@ try {
     Write-Host "Processing complete. Total cloud-only groups processed: $totalProcessed" -ForegroundColor Green
     
     # Move to final location
-    Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "GIAM-EntraGroups_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "EntraGroups_$timestamp.csv" -Config $config
 }
 catch {
     Write-Error "Error collecting Entra groups: $_"
