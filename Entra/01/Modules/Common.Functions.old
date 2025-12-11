@@ -1,9 +1,10 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Common functions for data collection
+    Common functions for data collection with integrated configuration
 #>
 
+#region Configuration
 $script:Config = @{
     Modules = @{
         BasePath = "Modules"
@@ -53,39 +54,55 @@ $script:Config = @{
         MemoryCheckInterval = 50000
     }
 }
+
 function Get-Config {
-    <#
-    .SYNOPSIS
-        Returns the module configuration as script-level configuration hashtable.
-    #>
-    param([string]$ConfigPath = $null)
+    param (
+        [string]$ConfigPath = $null  # Parameter kept for compatibility but ignored
+    )
+    
     return $script:Config
 }
+
+function Set-ConfigValue {
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path,
+        
+        [Parameter(Mandatory)]
+        $Value
+    )
+    
+    $parts = $Path -split '\.'
+    $current = $script:Config
+    
+    for ($i = 0; $i -lt $parts.Count - 1; $i++) {
+        if (-not $current.ContainsKey($parts[$i])) {
+            $current[$parts[$i]] = @{}
+        }
+        $current = $current[$parts[$i]]
+    }
+    
+    $current[$parts[-1]] = $Value
+}
+#endregion
+
+#region Path Management
 function Initialize-DataPaths {
-    <#
-    .SYNOPSIS
-        Creates all required directories if they don't exist
-    #>
     param (
         [Parameter(Mandatory)]
         [object]$Config
     )
     
-    foreach ($pathKey in $Config.Paths.Keys) {
-        $path = $Config.Paths[$pathKey]
+    foreach ($path in $Config.Paths.PSObject.Properties.Value) {
         if (-not (Test-Path $path)) {
             New-Item -ItemType Directory -Path $path -Force | Out-Null
         }
     }
 }
+#endregion
+
+#region File Management
 function Move-ProcessedCSV {
-    <#
-    .SYNOPSIS
-        Moves completed CSV to final location with size validation
-    .DESCRIPTION
-        Validates file size against existing files, creates backups,
-        and moves to error folder if size difference exceeds threshold
-    #>
     param (
         [Parameter(Mandatory)]
         [string]$SourcePath,
@@ -136,11 +153,10 @@ Existing Size: $existingSize bytes
     Move-Item -Path $SourcePath -Destination $finalPath -Force
     Write-Host "CSV saved to: $finalPath"
 }
+#endregion
+
+#region Memory Management
 function Test-MemoryPressure {
-    <#
-    .SYNOPSIS
-        Checks current memory usage and triggers garbage collection if needed
-    #>
     param (
         [double]$ThresholdGB,
         [double]$WarningGB
@@ -162,11 +178,8 @@ function Test-MemoryPressure {
     
     return $false
 }
+
 function Write-BufferToFile {
-    <#
-    .SYNOPSIS
-        Writes buffer contents to file and clears buffer
-    #>
     param (
         [Parameter(Mandatory)]
         [System.Collections.Generic.List[string]]$Buffer,
@@ -180,11 +193,10 @@ function Write-BufferToFile {
         $Buffer.Clear()
     }
 }
+#endregion
+
+#region Progress Management
 function Save-Progress {
-    <#
-    .SYNOPSIS
-        Saves progress state to JSON file for resumable operations
-    #>
     param (
         [Parameter(Mandatory)]
         [hashtable]$Progress,
@@ -195,11 +207,8 @@ function Save-Progress {
     
     $Progress | ConvertTo-Json -Depth 10 | Set-Content -Path $ProgressFile
 }
+
 function Get-Progress {
-    <#
-    .SYNOPSIS
-        Loads progress state from JSON file
-    #>
     param (
         [Parameter(Mandatory)]
         [string]$ProgressFile
@@ -212,20 +221,13 @@ function Get-Progress {
     
     return $null
 }
+#endregion
+
+#region Date Standardization
 function Convert-ToStandardDateTime {
-    <#
-    .SYNOPSIS
-        Converts Graph API ISO 8601 datetime to standard format
-    .DESCRIPTION
-        SIMPLIFIED VERSION - Only supports Graph API format (ISO 8601)
-        Returns format: yyyy-MM-dd HH:mm:ss
-    .EXAMPLE
-        Convert-ToStandardDateTime -DateValue "2024-03-15T10:30:00Z"
-        Returns: "2024-03-15 10:30:00"
-    #>
     param (
         [object]$DateValue,
-        [string]$SourceFormat = "GraphAPI"  # Kept for backward compatibility
+        [string]$SourceFormat = "Auto"
     )
     
     # Return empty string for null/empty values
@@ -234,25 +236,96 @@ function Convert-ToStandardDateTime {
     }
     
     try {
-        # Parse ISO 8601 format (Graph API standard)
-        $date = [DateTime]::Parse(
-            $DateValue, 
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [System.Globalization.DateTimeStyles]::RoundtripKind
-        )
-        return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+        switch ($SourceFormat) {
+            'GraphAPI' {
+                # Handle Microsoft Graph API ISO 8601 format
+                $date = [DateTime]::Parse($DateValue, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            'LDAP' {
+                # Handle LDAP datetime format (from AD.Functions.psm1)
+                $dateString = if ($DateValue -is [byte[]]) {
+                    [System.Text.Encoding]::UTF8.GetString($DateValue)
+                }
+                else {
+                    $DateValue.ToString()
+                }
+                
+                if ($dateString -match '(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})') {
+                    $date = [DateTime]::ParseExact(
+                        $matches[1..6] -join '',
+                        'yyyyMMddHHmmss',
+                        [System.Globalization.CultureInfo]::InvariantCulture
+                    )
+                    return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+                }
+                
+                $date = [DateTime]::Parse($dateString)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            'FileTime' {
+                # Handle Windows FileTime format (from AD.Functions.psm1)
+                $fileTimeValue = if ($DateValue -is [byte[]]) {
+                    [BitConverter]::ToInt64($DateValue, 0)
+                }
+                else {
+                    [Int64]::Parse($DateValue.ToString())
+                }
+                
+                if ($fileTimeValue -eq 0 -or 
+                    $fileTimeValue -eq [Int64]::MaxValue -or 
+                    $fileTimeValue -eq 9223372036854775807) {
+                    return ""
+                }
+                
+                return [DateTime]::FromFileTime($fileTimeValue).ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            'Epoch' {
+                # Handle Unix epoch seconds
+                $epochSeconds = [double]$DateValue
+                $date = [DateTime]::UnixEpoch.AddSeconds($epochSeconds)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            default {
+                # Auto-detect format
+                $stringValue = $DateValue.ToString()
+                
+                # Check for Graph API format (ISO 8601 with Z or offset)
+                if ($stringValue -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}') {
+                    return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'GraphAPI'
+                }
+                
+                # Check for LDAP format (yyyyMMddHHmmss)
+                if ($stringValue -match '^\d{14}') {
+                    return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'LDAP'
+                }
+                
+                # Check for epoch (numeric)
+                if ($DateValue -is [int] -or $DateValue -is [long] -or $DateValue -is [double]) {
+                    # If it's a large number, assume FileTime; if smaller, assume Epoch
+                    if ([long]$DateValue -gt 100000000000) {
+                        return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'FileTime'
+                    }
+                    else {
+                        return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'Epoch'
+                    }
+                }
+                
+                # Default: try to parse as standard datetime
+                $date = [DateTime]::Parse($stringValue, [System.Globalization.CultureInfo]::InvariantCulture)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
     }
     catch {
         Write-Warning "Failed to convert date value '$DateValue': $_"
         return ""
     }
 }
+#endregion
 
+#region Connection Management
 function Connect-ToGraph {
-    <#
-    .SYNOPSIS
-        Connects to Microsoft Graph API with certificate authentication
-    #>
     param (
         [Parameter(Mandatory)]
         [object]$Config,
@@ -289,11 +362,10 @@ function Connect-ToGraph {
     
     return $false
 }
+#endregion
+
+#region API Request Management
 function Invoke-GraphWithRetry {
-    <#
-    .SYNOPSIS
-        Invokes Graph API request with automatic retry and rate limit handling
-    #>
     param (
         [Parameter(Mandatory)]
         [string]$Uri,
@@ -339,11 +411,8 @@ function Invoke-GraphWithRetry {
         }
     }
 }
+
 function Get-GraphBatch {
-<#
-    .SYNOPSIS
-        Gets a batch of results from Graph API with pagination support
-#>
     param($NextLink, $Config)
     $response = Invoke-MgGraphRequest -Method GET -Uri $NextLink
     return @{
@@ -351,11 +420,10 @@ function Get-GraphBatch {
         NextLink = $response.'@odata.nextLink'
     }
 }
+#endregion
+
+#region Paging Functions
 function Invoke-GraphRequestWithPaging {
-<#
-    .SYNOPSIS
-        Retrieves all pages of results from a Graph API endpoint
-#>
     param (
         [string]$Uri,
         [object]$Config
@@ -371,37 +439,29 @@ function Invoke-GraphRequestWithPaging {
     } while ($currentUri)
     return $results
 }
+#endregion
+
+#region Group Filtering Functions
 function Get-InitialUserQuery {
-    <#
-    .SYNOPSIS
-        Builds initial user query with optional group scoping
-    #>
     param (
         [Parameter(Mandatory)]
         [object]$Config,
-        
         [Parameter(Mandatory)]
         [string]$SelectFields,
-        
         [Parameter(Mandatory)]
         [int]$BatchSize
     )
-    
     if ($Config.ScopeToGroup -and $Config.TargetGroup) {
         Write-Host "Scoping collection to group: $($Config.TargetGroup)"
-        
         # Get the group ID
         $groupResponse = Invoke-GraphWithRetry `
             -Uri "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$($Config.TargetGroup)'" `
             -Config $Config
-        
         if (-not $groupResponse.value -or $groupResponse.value.Count -eq 0) {
             throw "Group '$($Config.TargetGroup)' not found in tenant"
         }
-        
         $groupId = $groupResponse.value[0].id
         Write-Host "Found group ID: $groupId"
-        
         return "https://graph.microsoft.com/v1.0/groups/$groupId/members?`$select=$SelectFields&`$top=$BatchSize"
     }
     else {
@@ -409,6 +469,8 @@ function Get-InitialUserQuery {
         return "https://graph.microsoft.com/v1.0/users?`$select=$SelectFields&`$top=$BatchSize"
     }
 }
+#endregion
+
 Export-ModuleMember -Function @(
     'Get-Config',
     'Set-ConfigValue',

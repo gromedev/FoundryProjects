@@ -78,6 +78,21 @@ function Initialize-DataPaths {
         }
     }
 }
+<# Initialize-DataPaths: Original version
+function Initialize-DataPaths {
+
+    param (
+        [Parameter(Mandatory)]
+        [object]$Config
+    )
+    
+    foreach ($path in $Config.Paths.PSObject.Properties.Value) {
+        if (-not (Test-Path $path)) {
+            New-Item -ItemType Directory -Path $path -Force | Out-Null
+        }
+    }
+}
+#>
 function Move-ProcessedCSV {
     <#
     .SYNOPSIS
@@ -248,6 +263,106 @@ function Convert-ToStandardDateTime {
     }
 }
 
+<# Convert-ToStandardDateTime: Original version
+function Convert-ToStandardDateTime {
+    param (
+        [object]$DateValue,
+        [string]$SourceFormat = "Auto"
+    )
+    
+    # Return empty string for null/empty values
+    if ($null -eq $DateValue -or $DateValue -eq '' -or $DateValue -eq 0) {
+        return ""
+    }
+    
+    try {
+        switch ($SourceFormat) {
+            'GraphAPI' {
+                # Handle Microsoft Graph API ISO 8601 format
+                $date = [DateTime]::Parse($DateValue, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            'LDAP' {
+                # Handle LDAP datetime format (from AD.Functions.psm1)
+                $dateString = if ($DateValue -is [byte[]]) {
+                    [System.Text.Encoding]::UTF8.GetString($DateValue)
+                }
+                else {
+                    $DateValue.ToString()
+                }
+                
+                if ($dateString -match '(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})') {
+                    $date = [DateTime]::ParseExact(
+                        $matches[1..6] -join '',
+                        'yyyyMMddHHmmss',
+                        [System.Globalization.CultureInfo]::InvariantCulture
+                    )
+                    return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+                }
+                
+                $date = [DateTime]::Parse($dateString)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            'FileTime' {
+                # Handle Windows FileTime format (from AD.Functions.psm1)
+                $fileTimeValue = if ($DateValue -is [byte[]]) {
+                    [BitConverter]::ToInt64($DateValue, 0)
+                }
+                else {
+                    [Int64]::Parse($DateValue.ToString())
+                }
+                
+                if ($fileTimeValue -eq 0 -or 
+                    $fileTimeValue -eq [Int64]::MaxValue -or 
+                    $fileTimeValue -eq 9223372036854775807) {
+                    return ""
+                }
+                
+                return [DateTime]::FromFileTime($fileTimeValue).ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            'Epoch' {
+                # Handle Unix epoch seconds
+                $epochSeconds = [double]$DateValue
+                $date = [DateTime]::UnixEpoch.AddSeconds($epochSeconds)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            default {
+                # Auto-detect format
+                $stringValue = $DateValue.ToString()
+                
+                # Check for Graph API format (ISO 8601 with Z or offset)
+                if ($stringValue -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}') {
+                    return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'GraphAPI'
+                }
+                
+                # Check for LDAP format (yyyyMMddHHmmss)
+                if ($stringValue -match '^\d{14}') {
+                    return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'LDAP'
+                }
+                
+                # Check for epoch (numeric)
+                if ($DateValue -is [int] -or $DateValue -is [long] -or $DateValue -is [double]) {
+                    # If it's a large number, assume FileTime; if smaller, assume Epoch
+                    if ([long]$DateValue -gt 100000000000) {
+                        return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'FileTime'
+                    }
+                    else {
+                        return Convert-ToStandardDateTime -DateValue $DateValue -SourceFormat 'Epoch'
+                    }
+                }
+                
+                # Default: try to parse as standard datetime
+                $date = [DateTime]::Parse($stringValue, [System.Globalization.CultureInfo]::InvariantCulture)
+                return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
+    }
+    catch {
+        Write-Warning "Failed to convert date value '$DateValue': $_"
+        return ""
+    }
+}
+#>
 function Connect-ToGraph {
     <#
     .SYNOPSIS
