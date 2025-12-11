@@ -1,0 +1,68 @@
+{
+    "Modules": {
+        "BasePath": "Modules",
+        "Common": "Common.Functions.psm1",
+        "AD": "AD.Functions.psm1",
+        "Entra": "Entra.Functions.psm1",
+        "Config": "giam-config.json"
+    },
+    "Paths": {
+        "CSV": "D:\\ID-Tool\\Import\\CSVs",
+        "Temp": "D:\\ID-Tool\\Import\\temp"
+    },
+    "ActiveDirectory": {
+        "OrganizationalUnit": "DC=corp,DC=novocorp,DC=net",
+        "PageSize": 1000,
+        "BufferLimit": 1000,
+        "MemoryThresholdGB": 14,
+        "MemoryWarningThresholdGB": 10,
+        "SearchTimeoutSeconds": 300,
+        "RetryAttempts": 3,
+        "RetryDelaySeconds": 5,
+        "TargetGroup": null,
+        "ScopeToGroup": false
+    },
+    "EntraID": {
+        "TenantId": "novonordisk.onmicrosoft.com",
+        "ClientId": "f8091812-4a88-44c6-9c1d-4ea5abe1bda6",
+        "CertificateThumbprint": "97a1540bc199dd4406d48101073879ba2573390e",
+        "BatchSize": 999,
+        "ParallelThrottle": 10,
+        "RateLimitDelayMs": 10,
+        "RetryAttempts": 3,
+        "RetryDelaySeconds": 5,
+        "MemoryThresholdGB": 12,
+        "MemoryWarningThresholdGB": 10,
+        "TargetGroup": null,
+        "ScopeToGroup": false
+    },
+    "HRAPI": {
+        "BaseUrl": "https://eu1-int.map.api.novonordisk.com/cs/po-exp/v1/api/employeeOpenData",
+        "CredentialTarget": "HRAPICredentials",
+        "RetryAttempts": 3,
+        "RetryDelaySeconds": 5
+    },
+    "FileManagement": {
+        "SizeThresholdPercent": 20,
+        "DateFormat": "yyyyMMdd_HHmmss"
+    },
+    "FilePrefixes": {
+        "ADUsers": "GIAM-ADUsers-BasicData",
+        "ADGroups": "GIAM-ADUsers-GroupInfo",
+        "EntraUsers": "GIAM-EntraUsers-BasicData",
+        "EntraPermissions": "GIAM-EntraUsers-Permissions",
+        "EntraGroups": "GIAM-EntraUsers-Groups",
+        "EntraGraphPermissions": "GIAM-EntraUsers-GraphPermissions",
+        "HRData": "GIAM-HRAPI"
+    },
+        "Metrics": {
+        "StaleAccountThresholdDays": 90,
+        "HashTableLimits": {
+            "UniqueUsers": 500000,
+            "UniqueGroups": 5000000,
+            "UniqueRoles": 500000,
+            "UniqueApplications": 500000
+        },
+        "MemoryCheckInterval": 50000
+    }
+}
