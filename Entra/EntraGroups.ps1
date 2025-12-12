@@ -172,9 +172,9 @@ try {
                     
                     $localBatchResultsBasic.Add($lineBasic)
                     
-                    # ===========================================
+
                     # GROUP TYPES (separate CSV)
-                    # ===========================================
+
                     if ($group.groupTypes -and $group.groupTypes.Count -gt 0) {
                         foreach ($groupType in $group.groupTypes) {
                             $lineType = "`"{0}`",`"{1}`",`"{2}`"" -f `
@@ -186,9 +186,9 @@ try {
                         }
                     }
                     
-                    # ===========================================
+
                     # GROUP TAGS (separate CSV)
-                    # ===========================================
+
                     if ($group.tags -and $group.tags.Count -gt 0) {
                         foreach ($tag in $group.tags) {
                             $lineTag = "`"{0}`",`"{1}`",`"{2}`"" -f `

@@ -10,10 +10,8 @@ $script:Config = @{
         Common = "Common.Functions.psm1"
     }
     Paths = @{
-        CSV = "D:\ID-Tool\Import\CSVs"
-        Temp = "D:\ID-Tool\Import\temp"
-        Backup = "D:\ID-Tool\Import\Backup"
-        Error = "D:\ID-Tool\Import\Error"
+        CSV = "Import\CSVs"
+        Temp = "Import\temp"
     }
     EntraID = @{
         TenantId = "thomasmartingrome.onmicrosoft.com"
@@ -247,7 +245,6 @@ function Convert-ToStandardDateTime {
         return ""
     }
 }
-
 function Connect-ToGraph {
     <#
     .SYNOPSIS

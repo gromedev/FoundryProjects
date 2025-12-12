@@ -40,9 +40,7 @@ try {
     $totalProcessed = 0
     $permissionsFound = 0
     
-    # ===========================================
-    # STEP 1: Build ENTRA ROLE lookup table
-    # ===========================================
+##region Build ENTRA ROLE lookup table
     Write-Host "Building Entra role lookup table..."
     $userEntraRoles = @{}  # userId -> array of role assignments
     
@@ -168,10 +166,8 @@ try {
     }
     
     Write-Host "Entra role lookup table built with $($userEntraRoles.Count) entries"
-    
-    # ===========================================
-    # STEP 2: Build GRAPH PERMISSIONS lookup table
-    # ===========================================
+#endregion    
+#region Build GRAPH PERMISSIONS lookup table
     Write-Host "Building Graph permissions lookup table..."
     $userGraphPermissions = @{}  # userId -> array of graph permissions
     $spCache = @{}  # Service principal cache
@@ -234,10 +230,8 @@ try {
     }
     
     Write-Host "Graph permissions lookup table built with $($userGraphPermissions.Count) users"
-    
-    # ===========================================
-    # STEP 3: Process users and combine permissions
-    # ===========================================
+#endregion
+##region Process users and combine permissions
     Write-Host "Processing users in batches..."
     $batchSize = $config.EntraID.BatchSize
     $batchNumber = 0
@@ -275,9 +269,7 @@ try {
             foreach ($user in $users) {
                 $userHasAnyPermissions = $false
                 
-                # ===========================================
-                # OUTPUT ENTRA ROLES
-                # ===========================================
+#region OUTPUT ENTRA ROLES
                 $userEntraRoleList = @()
                 
                 # Check direct user roles (by userId)
@@ -309,10 +301,8 @@ try {
                         $userHasAnyPermissions = $true
                     }
                 }
-                
-                # ===========================================
-                # OUTPUT GRAPH DELEGATED PERMISSIONS
-                # ===========================================
+                #emdregion
+#region OUTPUT GRAPH DELEGATED PERMISSIONS
                 if ($userGraphPermissions.ContainsKey($user.id)) {
                     foreach ($permission in $userGraphPermissions[$user.id]) {
                         $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `
@@ -331,10 +321,9 @@ try {
                         $userHasAnyPermissions = $true
                     }
                 }
-                
-                # ===========================================
-                # OUTPUT GRAPH APPLICATION PERMISSIONS (per user)
-                # ===========================================
+#endregion
+#region OUTPUT GRAPH APPLICATION PERMISSIONS (per user)
+
                 try {
                     $appRoleAssignments = Invoke-GraphWithRetry `
                         -Uri "https://graph.microsoft.com/v1.0/users/$($user.id)/appRoleAssignments" `
@@ -386,7 +375,7 @@ try {
                 catch {
                     # Error getting app role assignments for this user - continue
                 }
-                
+#endregion
                 # If user has NO permissions at all, add empty entry
                 if (-not $userHasAnyPermissions) {
                     $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `

@@ -105,13 +105,13 @@ try {
                 )
             }
             
-            # Process users in parallel - collect BOTH user data AND group memberships
+            # Process users in parallel - collects user data and group memberships
             $batchResultsUsers = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             $batchResultsGroups = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             
             $users | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
                 # Import module in parallel scope
-                Import-Module (Join-Path $using:PSScriptRoot "Modules\Common.Functions.psm1") -Force
+                Import-Module (Join-Path $using:PSScriptRoot "Common.Functions.psm1") -Force
                 
                 $user = $_
                 $localBatchResultsUsers = $using:batchResultsUsers
@@ -122,9 +122,7 @@ try {
                 $errorValue = "NULL"
                 
                 try {
-                    # ===========================================
-                    # PART 1: USER BASIC DATA
-                    # ===========================================
+#region USER BASIC DATA
                     
                     # Convert licenses to SKU names
                     $licenses = if ($user.assignedLicenses) {
@@ -158,10 +156,8 @@ try {
                         ($user.passwordPolicies ?? $errorValue)
                     
                     $localBatchResultsUsers.Add($lineUser)
-                    
-                    # ===========================================
-                    # PART 2: USER GROUP MEMBERSHIPS
-                    # ===========================================
+#endregion
+#region USER GROUP MEMBERSHIPS
                     
                     # Get user's direct group memberships
                     $directGroups = Invoke-GraphWithRetry `
@@ -251,7 +247,7 @@ try {
                 }
             }
             
-            # Write BOTH batches to their respective files (thread-safe)
+            # Write batches to their respective files (thread-safe)
             if ($batchResultsUsers.Count -gt 0) {
                 try {
                     $mutexUsers.WaitOne() | Out-Null
@@ -279,7 +275,7 @@ try {
     
     Write-Host "Processing complete. Total users processed: $totalProcessed" -ForegroundColor Green
     
-    # Move BOTH files to final location
+    # Move files to final location
     Move-ProcessedCSV -SourcePath $tempPathUsers -FinalFileName "$($config.FilePrefixes.EntraUsers)_$timestamp.csv" -Config $config
     Move-ProcessedCSV -SourcePath $tempPathGroups -FinalFileName "$($config.FilePrefixes.EntraGroups)_$timestamp.csv" -Config $config
 }
