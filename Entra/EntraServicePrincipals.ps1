@@ -4,7 +4,12 @@
     Collects Entra ID service principal data with parallel processing
 .DESCRIPTION
     Collects comprehensive service principal information from Microsoft Entra ID
-    UserIdentifier column REMOVED (using displayName as primary identifier)
+    Outputs FIVE separate CSV files:
+    1. EntraServicePrincipals-BasicData - Core SP info (one row per SP)
+    2. EntraServicePrincipals-OAuth2Permissions - OAuth2 permission scopes (one row per scope)
+    3. EntraServicePrincipals-AppPermissions - Resource-specific app permissions (one row per permission)
+    4. EntraServicePrincipals-Names - Service principal names (one row per name)
+    5. EntraServicePrincipals-Tags - Tags (one row per tag)
 #>
 
 [CmdletBinding()]
@@ -19,23 +24,48 @@ Initialize-DataPaths -Config $config
 
 Write-Host $PSScriptRoot
 
-# Setup paths
+# Setup paths for FIVE outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
-$tempPath = Join-Path $config.Paths.Temp "EntraServicePrincipals_$timestamp.csv"
+$tempPathBasic = Join-Path $config.Paths.Temp "EntraServicePrincipals-BasicData_$timestamp.csv"
+$tempPathOAuth2 = Join-Path $config.Paths.Temp "EntraServicePrincipals-OAuth2Permissions_$timestamp.csv"
+$tempPathAppPerms = Join-Path $config.Paths.Temp "EntraServicePrincipals-AppPermissions_$timestamp.csv"
+$tempPathNames = Join-Path $config.Paths.Temp "EntraServicePrincipals-Names_$timestamp.csv"
+$tempPathTags = Join-Path $config.Paths.Temp "EntraServicePrincipals-Tags_$timestamp.csv"
 
-# Initialize CSV with headers - UserIdentifier REMOVED
-$csvHeader = "`"displayName`",`"accountEnabled`",`"addIns`",`"appDescription`",`"appId`",`"appRoleAssignmentRequired`",`"deletedDateTime`",`"description`",`"oauth2PermissionScopes`",`"preferredSingleSignOnMode`",`"resourceSpecificApplicationPermissions`",`"servicePrincipalNames`",`"servicePrincipalType`",`"tags`""
-Set-Content -Path $tempPath -Value $csvHeader -Encoding UTF8
+# Initialize CSV with headers
+$csvHeaderBasic = "`"displayName`",`"Id`",`"accountEnabled`",`"appDescription`",`"appId`",`"appRoleAssignmentRequired`",`"deletedDateTime`",`"description`",`"preferredSingleSignOnMode`",`"servicePrincipalType`""
+Set-Content -Path $tempPathBasic -Value $csvHeaderBasic -Encoding UTF8
 
-# Initialize mutex for thread-safe file writing
-$mutex = [System.Threading.Mutex]::new($false, "EntraServicePrincipalsCSVMutex")
+$csvHeaderOAuth2 = "`"ServicePrincipalId`",`"ServicePrincipalName`",`"OAuth2PermissionScope`""
+Set-Content -Path $tempPathOAuth2 -Value $csvHeaderOAuth2 -Encoding UTF8
+
+$csvHeaderAppPerms = "`"ServicePrincipalId`",`"ServicePrincipalName`",`"ResourceSpecificApplicationPermission`""
+Set-Content -Path $tempPathAppPerms -Value $csvHeaderAppPerms -Encoding UTF8
+
+$csvHeaderNames = "`"ServicePrincipalId`",`"ServicePrincipalName`",`"ServicePrincipalNameValue`""
+Set-Content -Path $tempPathNames -Value $csvHeaderNames -Encoding UTF8
+
+$csvHeaderTags = "`"ServicePrincipalId`",`"ServicePrincipalName`",`"Tag`""
+Set-Content -Path $tempPathTags -Value $csvHeaderTags -Encoding UTF8
+
+# Initialize mutexes for thread-safe file writing (one per file)
+$mutexBasic = [System.Threading.Mutex]::new($false, "EntraSPBasicCSVMutex")
+$mutexOAuth2 = [System.Threading.Mutex]::new($false, "EntraSPOAuth2CSVMutex")
+$mutexAppPerms = [System.Threading.Mutex]::new($false, "EntraSPAppPermsCSVMutex")
+$mutexNames = [System.Threading.Mutex]::new($false, "EntraSPNamesCSVMutex")
+$mutexTags = [System.Threading.Mutex]::new($false, "EntraSPTagsCSVMutex")
 
 try {
     # Connect to Graph
     Connect-ToGraph -Config $config.EntraID
     
     # Initialize processing variables
-    $resultBuffer = [System.Collections.Generic.List[string]]::new()
+    $resultBufferBasic = [System.Collections.Generic.List[string]]::new()
+    $resultBufferOAuth2 = [System.Collections.Generic.List[string]]::new()
+    $resultBufferAppPerms = [System.Collections.Generic.List[string]]::new()
+    $resultBufferNames = [System.Collections.Generic.List[string]]::new()
+    $resultBufferTags = [System.Collections.Generic.List[string]]::new()
+    
     $totalProcessed = 0
     $batchNumber = 0
     
@@ -58,9 +88,21 @@ try {
         if ($batchNumber % 10 -eq 0) {
             if (Test-MemoryPressure -ThresholdGB $config.EntraID.MemoryThresholdGB `
                                     -WarningGB $config.EntraID.MemoryWarningThresholdGB) {
-                # Write buffer when memory pressure detected
-                if ($resultBuffer.Count -gt 0) {
-                    Write-BufferToFile -Buffer $resultBuffer -FilePath $tempPath
+                # Write buffers when memory pressure detected
+                if ($resultBufferBasic.Count -gt 0) {
+                    Write-BufferToFile -Buffer $resultBufferBasic -FilePath $tempPathBasic
+                }
+                if ($resultBufferOAuth2.Count -gt 0) {
+                    Write-BufferToFile -Buffer $resultBufferOAuth2 -FilePath $tempPathOAuth2
+                }
+                if ($resultBufferAppPerms.Count -gt 0) {
+                    Write-BufferToFile -Buffer $resultBufferAppPerms -FilePath $tempPathAppPerms
+                }
+                if ($resultBufferNames.Count -gt 0) {
+                    Write-BufferToFile -Buffer $resultBufferNames -FilePath $tempPathNames
+                }
+                if ($resultBufferTags.Count -gt 0) {
+                    Write-BufferToFile -Buffer $resultBufferTags -FilePath $tempPathTags
                 }
             }
         }
@@ -90,93 +132,186 @@ try {
             }
             
             # Process service principals in parallel
-            $batchResults = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsBasic = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsOAuth2 = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsAppPerms = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsNames = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsTags = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             
             $servicePrincipals | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
                 $sp = $_
-                $localBatchResults = $using:batchResults
-                $errorValue = "NULL"
+                $localBatchResultsBasic = $using:batchResultsBasic
+                $localBatchResultsOAuth2 = $using:batchResultsOAuth2
+                $localBatchResultsAppPerms = $using:batchResultsAppPerms
+                $localBatchResultsNames = $using:batchResultsNames
+                $localBatchResultsTags = $using:batchResultsTags
                 
                 try {
-                    # Process addIns array safely
-                    $addIns = if ($sp.addIns -and $sp.addIns.Count -gt 0) {
-                        ($sp.addIns | ForEach-Object { $_.type } | Select-Object -First 10) -join ' | '
-                    } else { $errorValue }
-                    
                     # Clean up text fields for CSV safety
                     $cleanDescription = if ($sp.description) {
                         ($sp.description -replace "`r`n", " " -replace "`n", " " -replace "`t", " " -replace '"', '""').Trim()
-                    } else { $errorValue }
+                    } else { "" }
                     
                     $cleanNotes = if ($sp.notes) {
                         ($sp.notes -replace "`r`n", " " -replace "`n", " " -replace "`t", " " -replace '"', '""').Trim()
-                    } else { $errorValue }
+                    } else { "" }
                     
-                    # Process oauth2PermissionScopes array
-                    $oauth2PermissionScopes = if ($sp.oauth2PermissionScopes -and $sp.oauth2PermissionScopes.Count -gt 0) {
-                        ($sp.oauth2PermissionScopes | ForEach-Object { $_.value } | Select-Object -First 20) -join ' | '
-                    } else { $errorValue }
-                    
-                    # Process resourceSpecificApplicationPermissions array
-                    $resourceSpecificApplicationPermissions = if ($sp.resourceSpecificApplicationPermissions -and $sp.resourceSpecificApplicationPermissions.Count -gt 0) {
-                        ($sp.resourceSpecificApplicationPermissions | ForEach-Object { $_.value } | Select-Object -First 10) -join ' | '
-                    } else { $errorValue }
-                    
-                    # Process servicePrincipalNames array
-                    $servicePrincipalNames = if ($sp.servicePrincipalNames -and $sp.servicePrincipalNames.Count -gt 0) {
-                        ($sp.servicePrincipalNames | Select-Object -First 15) -join ' | '
-                    } else { $errorValue }
-                    
-                    # Process tags array
-                    $tags = if ($sp.tags -and $sp.tags.Count -gt 0) {
-                        ($sp.tags | Select-Object -First 10) -join ' | '
-                    } else { $errorValue }
-                    
-                    # Format CSV line (UserIdentifier removed - displayName is first field)
-                    $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`",`"{10}`",`"{11}`",`"{12}`",`"{13}`"" -f `
-                        (($sp.displayName ?? $errorValue) -replace '"', '""'),
-                        ($sp.StandardAccountEnabled ?? $errorValue),
-                        ($addIns -replace '"', '""'),
+                    # ===========================================
+                    # BASIC DATA (without multi-value fields)
+                    # ===========================================
+                    $lineBasic = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
+                        (($sp.displayName ?? "") -replace '"', '""'),
+                        ($sp.id ?? ""),
+                        ($sp.StandardAccountEnabled ?? ""),
                         $cleanNotes,
-                        ($sp.appId ?? $errorValue),
-                        ($sp.StandardAppRoleAssignmentRequired ?? $errorValue),
-                        ($sp.StandardDeletedDateTime ?? $errorValue),
+                        ($sp.appId ?? ""),
+                        ($sp.StandardAppRoleAssignmentRequired ?? ""),
+                        ($sp.StandardDeletedDateTime ?? ""),
                         $cleanDescription,
-                        ($oauth2PermissionScopes -replace '"', '""'),
-                        ($errorValue),
-                        ($resourceSpecificApplicationPermissions -replace '"', '""'),
-                        ($servicePrincipalNames -replace '"', '""'),
-                        (($sp.servicePrincipalType ?? $errorValue) -replace '"', '""'),
-                        ($tags -replace '"', '""')
+                        (""),
+                        (($sp.servicePrincipalType ?? "") -replace '"', '""')
                     
-                    $localBatchResults.Add($line)
+                    $localBatchResultsBasic.Add($lineBasic)
+                    
+                    # ===========================================
+                    # OAUTH2 PERMISSION SCOPES (separate CSV)
+                    # ===========================================
+                    if ($sp.oauth2PermissionScopes -and $sp.oauth2PermissionScopes.Count -gt 0) {
+                        foreach ($scope in $sp.oauth2PermissionScopes) {
+                            if ($scope.value) {
+                                $lineOAuth2 = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                    $sp.id,
+                                    ($sp.displayName ?? ""),
+                                    ($scope.value ?? "")
+                                
+                                $localBatchResultsOAuth2.Add($lineOAuth2)
+                            }
+                        }
+                    }
+                    
+                    # ===========================================
+                    # RESOURCE-SPECIFIC APP PERMISSIONS (separate CSV)
+                    # ===========================================
+                    if ($sp.resourceSpecificApplicationPermissions -and $sp.resourceSpecificApplicationPermissions.Count -gt 0) {
+                        foreach ($permission in $sp.resourceSpecificApplicationPermissions) {
+                            if ($permission.value) {
+                                $lineAppPerm = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                    $sp.id,
+                                    ($sp.displayName ?? ""),
+                                    ($permission.value ?? "")
+                                
+                                $localBatchResultsAppPerms.Add($lineAppPerm)
+                            }
+                        }
+                    }
+                    
+                    # ===========================================
+                    # SERVICE PRINCIPAL NAMES (separate CSV)
+                    # ===========================================
+                    if ($sp.servicePrincipalNames -and $sp.servicePrincipalNames.Count -gt 0) {
+                        foreach ($spName in $sp.servicePrincipalNames) {
+                            if ($spName) {
+                                $lineName = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                    $sp.id,
+                                    ($sp.displayName ?? ""),
+                                    ($spName ?? "")
+                                
+                                $localBatchResultsNames.Add($lineName)
+                            }
+                        }
+                    }
+                    
+                    # ===========================================
+                    # TAGS (separate CSV)
+                    # ===========================================
+                    if ($sp.tags -and $sp.tags.Count -gt 0) {
+                        foreach ($tag in $sp.tags) {
+                            if ($tag) {
+                                $lineTag = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                    $sp.id,
+                                    ($sp.displayName ?? ""),
+                                    ($tag ?? "")
+                                
+                                $localBatchResultsTags.Add($lineTag)
+                            }
+                        }
+                    }
                 }
                 catch {
                     Write-Warning "Error processing service principal $($sp.displayName): $_"
                 }
             }
             
-            # Write batch to file (thread-safe) and add to main buffer
-            if ($batchResults.Count -gt 0) {
-                # Add to main buffer for memory management
-                foreach ($result in $batchResults) {
-                    $resultBuffer.Add($result)
-                }
-                
-                # Write buffer when full
-                if ($resultBuffer.Count -ge $config.ActiveDirectory.BufferLimit) {
-                    try {
-                        $mutex.WaitOne() | Out-Null
-                        Write-BufferToFile -Buffer $resultBuffer -FilePath $tempPath
-                    }
-                    finally {
-                        $mutex.ReleaseMutex()
-                    }
-                }
-                
-                $totalProcessed += $servicePrincipals.Count
-                Write-Host "Completed batch $batchNumber. Total service principals processed: $totalProcessed"
+            # Add batch results to main buffers
+            foreach ($result in $batchResultsBasic) {
+                $resultBufferBasic.Add($result)
             }
+            foreach ($result in $batchResultsOAuth2) {
+                $resultBufferOAuth2.Add($result)
+            }
+            foreach ($result in $batchResultsAppPerms) {
+                $resultBufferAppPerms.Add($result)
+            }
+            foreach ($result in $batchResultsNames) {
+                $resultBufferNames.Add($result)
+            }
+            foreach ($result in $batchResultsTags) {
+                $resultBufferTags.Add($result)
+            }
+            
+            # Write buffers when full
+            if ($resultBufferBasic.Count -ge $config.ActiveDirectory.BufferLimit) {
+                try {
+                    $mutexBasic.WaitOne() | Out-Null
+                    Write-BufferToFile -Buffer $resultBufferBasic -FilePath $tempPathBasic
+                }
+                finally {
+                    $mutexBasic.ReleaseMutex()
+                }
+            }
+            
+            if ($resultBufferOAuth2.Count -ge $config.ActiveDirectory.BufferLimit) {
+                try {
+                    $mutexOAuth2.WaitOne() | Out-Null
+                    Write-BufferToFile -Buffer $resultBufferOAuth2 -FilePath $tempPathOAuth2
+                }
+                finally {
+                    $mutexOAuth2.ReleaseMutex()
+                }
+            }
+            
+            if ($resultBufferAppPerms.Count -ge $config.ActiveDirectory.BufferLimit) {
+                try {
+                    $mutexAppPerms.WaitOne() | Out-Null
+                    Write-BufferToFile -Buffer $resultBufferAppPerms -FilePath $tempPathAppPerms
+                }
+                finally {
+                    $mutexAppPerms.ReleaseMutex()
+                }
+            }
+            
+            if ($resultBufferNames.Count -ge $config.ActiveDirectory.BufferLimit) {
+                try {
+                    $mutexNames.WaitOne() | Out-Null
+                    Write-BufferToFile -Buffer $resultBufferNames -FilePath $tempPathNames
+                }
+                finally {
+                    $mutexNames.ReleaseMutex()
+                }
+            }
+            
+            if ($resultBufferTags.Count -ge $config.ActiveDirectory.BufferLimit) {
+                try {
+                    $mutexTags.WaitOne() | Out-Null
+                    Write-BufferToFile -Buffer $resultBufferTags -FilePath $tempPathTags
+                }
+                finally {
+                    $mutexTags.ReleaseMutex()
+                }
+            }
+            
+            $totalProcessed += $servicePrincipals.Count
+            Write-Host "Completed batch $batchNumber. Total service principals processed: $totalProcessed"
         }
         
         # Clear batch data to manage memory
@@ -189,21 +324,65 @@ try {
         }
     }
     
-    # Write remaining buffer
-    if ($resultBuffer.Count -gt 0) {
+    # Write remaining buffers
+    if ($resultBufferBasic.Count -gt 0) {
         try {
-            $mutex.WaitOne() | Out-Null
-            Write-BufferToFile -Buffer $resultBuffer -FilePath $tempPath
+            $mutexBasic.WaitOne() | Out-Null
+            Write-BufferToFile -Buffer $resultBufferBasic -FilePath $tempPathBasic
         }
         finally {
-            $mutex.ReleaseMutex()
+            $mutexBasic.ReleaseMutex()
+        }
+    }
+    
+    if ($resultBufferOAuth2.Count -gt 0) {
+        try {
+            $mutexOAuth2.WaitOne() | Out-Null
+            Write-BufferToFile -Buffer $resultBufferOAuth2 -FilePath $tempPathOAuth2
+        }
+        finally {
+            $mutexOAuth2.ReleaseMutex()
+        }
+    }
+    
+    if ($resultBufferAppPerms.Count -gt 0) {
+        try {
+            $mutexAppPerms.WaitOne() | Out-Null
+            Write-BufferToFile -Buffer $resultBufferAppPerms -FilePath $tempPathAppPerms
+        }
+        finally {
+            $mutexAppPerms.ReleaseMutex()
+        }
+    }
+    
+    if ($resultBufferNames.Count -gt 0) {
+        try {
+            $mutexNames.WaitOne() | Out-Null
+            Write-BufferToFile -Buffer $resultBufferNames -FilePath $tempPathNames
+        }
+        finally {
+            $mutexNames.ReleaseMutex()
+        }
+    }
+    
+    if ($resultBufferTags.Count -gt 0) {
+        try {
+            $mutexTags.WaitOne() | Out-Null
+            Write-BufferToFile -Buffer $resultBufferTags -FilePath $tempPathTags
+        }
+        finally {
+            $mutexTags.ReleaseMutex()
         }
     }
     
     Write-Host "Processing complete! Total service principals processed: $totalProcessed" -ForegroundColor Green
     
-    # Move to final location
-    Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "EntraServicePrincipals_$timestamp.csv" -Config $config
+    # Move ALL FIVE files to final location
+    Move-ProcessedCSV -SourcePath $tempPathBasic -FinalFileName "EntraServicePrincipals-BasicData_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathOAuth2 -FinalFileName "EntraServicePrincipals-OAuth2Permissions_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathAppPerms -FinalFileName "EntraServicePrincipals-AppPermissions_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathNames -FinalFileName "EntraServicePrincipals-Names_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathTags -FinalFileName "EntraServicePrincipals-Tags_$timestamp.csv" -Config $config
 }
 catch {
     Write-Error "Error collecting Entra service principals: $_"
@@ -211,13 +390,31 @@ catch {
 }
 finally {
     # Clean up
-    if ($resultBuffer) { 
-        $resultBuffer.Clear()
-        $resultBuffer = $null
+    if ($resultBufferBasic) { 
+        $resultBufferBasic.Clear()
+        $resultBufferBasic = $null
     }
-    if ($mutex) { 
-        $mutex.Dispose() 
+    if ($resultBufferOAuth2) { 
+        $resultBufferOAuth2.Clear()
+        $resultBufferOAuth2 = $null
     }
+    if ($resultBufferAppPerms) { 
+        $resultBufferAppPerms.Clear()
+        $resultBufferAppPerms = $null
+    }
+    if ($resultBufferNames) { 
+        $resultBufferNames.Clear()
+        $resultBufferNames = $null
+    }
+    if ($resultBufferTags) { 
+        $resultBufferTags.Clear()
+        $resultBufferTags = $null
+    }
+    if ($mutexBasic) { $mutexBasic.Dispose() }
+    if ($mutexOAuth2) { $mutexOAuth2.Dispose() }
+    if ($mutexAppPerms) { $mutexAppPerms.Dispose() }
+    if ($mutexNames) { $mutexNames.Dispose() }
+    if ($mutexTags) { $mutexTags.Dispose() }
     Disconnect-MgGraph -ErrorAction SilentlyContinue
     [System.GC]::Collect()
 }

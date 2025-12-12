@@ -4,7 +4,8 @@
     Shows cloud-only groups with nesting relationships
 .DESCRIPTION
     Collects group nesting data (parent/child relationships)
-    Outputs NULL for empty fields instead of empty strings
+    Outputs one row per relationship (either Contains or MemberOf)
+    Uses empty strings for missing values (no NULL)
 #>
 
 [CmdletBinding()]
@@ -21,11 +22,11 @@ Initialize-DataPaths -Config $config
 
 # Setup paths
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
-$tempPath = Join-Path $config.Paths.Temp "$($config.FilePrefixes.EntraGroups)-Nested_$timestamp.csv"
-$progressFile = Join-Path $config.Paths.Temp "$($config.FilePrefixes.EntraGroups)-Nested_progress.json"
+$tempPath = Join-Path $config.Paths.Temp "EntraGroups-Relationships_$timestamp.csv"
+$progressFile = Join-Path $config.Paths.Temp "EntraGroups-Relationships_progress.json"
 
-# Initialize CSV with relationship-focused headers (IDs and Names)
-$csvHeader = "`"GroupId`",`"GroupName`",`"GroupType`",`"NestedGroupIds`",`"NestedGroupNames`",`"NestedGroupCount`",`"ParentGroupIds`",`"ParentGroupNames`",`"ParentGroupCount`",`"TotalRelationships`""
+# Initialize CSV with relationship headers (one row per relationship)
+$csvHeader = "`"GroupId`",`"GroupName`",`"GroupType`",`"RelatedGroupId`",`"RelatedGroupName`",`"RelationshipType`""
 if ($PSVersionTable.PSVersion.Major -ge 6) {
     Set-Content -Path $tempPath -Value $csvHeader -Encoding UTF8
 } else {
@@ -43,8 +44,7 @@ if (-not $progress) {
     $progress = @{
         ProcessedGroups          = 0
         CloudOnlyGroupsFound     = 0
-        GroupsWithRelationships  = 0
-        GroupsWrittenToCSV       = 0
+        RelationshipsWritten     = 0
         LastBatchNumber          = 0
         StartTime                = (Get-Date).ToString('o')
     }
@@ -54,7 +54,7 @@ try {
     # Connect to Graph
     Connect-ToGraph -Config $config.EntraID
 
-    Write-Host "Process each group immediately with NULL for empty values" -ForegroundColor Yellow
+    Write-Host "Processing each group and outputting one row per relationship" -ForegroundColor Yellow
 
     # MINIMAL memory footprint - only small buffer for CSV writing
     $resultBuffer = [System.Collections.Generic.List[string]]::new()
@@ -62,8 +62,7 @@ try {
     # Counters
     $totalGroupsProcessed = $progress.ProcessedGroups
     $cloudOnlyGroupsFound = $progress.CloudOnlyGroupsFound
-    $groupsWithRelationships = $progress.GroupsWithRelationships
-    $groupsWrittenToCSV = $progress.GroupsWrittenToCSV
+    $relationshipsWritten = $progress.RelationshipsWritten
     $batchNumber = $progress.LastBatchNumber
 
     # Build query
@@ -131,8 +130,6 @@ try {
                     
                     # RELATIONSHIP 1: What cloud-only groups does this group contain? (Children)
                     $nestedGroups = @()
-                    $nestedGroupIds = @()
-                    $nestedGroupNames = @()
                     
                     try {
                         $membersUri = "https://graph.microsoft.com/v1.0/groups/$($group.id)/transitiveMembers/microsoft.graph.group?`$select=id,displayName,onPremisesSyncEnabled,onPremisesSecurityIdentifier"
@@ -144,13 +141,6 @@ try {
                                 ($null -eq $_.onPremisesSyncEnabled -or $_.onPremisesSyncEnabled -eq $false) -and
                                 ($null -eq $_.onPremisesSecurityIdentifier -or $_.onPremisesSecurityIdentifier -eq "")
                             }
-                            
-                            if ($nestedGroups) {
-                                $nestedGroupIds = $nestedGroups.id
-                                $nestedGroupNames = $nestedGroups.displayName | ForEach-Object {
-                                    $_ -replace '"', '""' -replace ',', ';' -replace '\r?\n', ' '
-                                }
-                            }
                         }
                     } catch {
                         Write-Warning "    Error getting nested groups: $_"
@@ -158,8 +148,6 @@ try {
                     
                     # RELATIONSHIP 2: What cloud-only groups contain this group? (Parents)
                     $parentGroups = @()
-                    $parentGroupIds = @()
-                    $parentGroupNames = @()
                     
                     try {
                         $memberOfUri = "https://graph.microsoft.com/v1.0/groups/$($group.id)/transitiveMemberOf/microsoft.graph.group?`$select=id,displayName,onPremisesSyncEnabled,onPremisesSecurityIdentifier"
@@ -171,50 +159,31 @@ try {
                                 ($null -eq $_.onPremisesSyncEnabled -or $_.onPremisesSyncEnabled -eq $false) -and
                                 ($null -eq $_.onPremisesSecurityIdentifier -or $_.onPremisesSecurityIdentifier -eq "")
                             }
-                            
-                            if ($parentGroups) {
-                                $parentGroupIds = $parentGroups.id
-                                $parentGroupNames = $parentGroups.displayName | ForEach-Object {
-                                    $_ -replace '"', '""' -replace ',', ';' -replace '\r?\n', ' '
-                                }
-                            }
                         }
                     } catch {
                         Write-Warning "    Error getting parent groups: $_"
                     }
                     
-                    # ONLY OUTPUT IF GROUP HAS RELATIONSHIPS (children OR parents)
-                    $totalRelationships = $nestedGroups.Count + $parentGroups.Count
+                    # OUTPUT ONE ROW PER NESTED GROUP (Contains relationship)
+                    if ($nestedGroups.Count -gt 0) {
+                        foreach ($nestedGroup in $nestedGroups) {
+                            $line = "`"$($group.id)`",`"$($group.displayName -replace '"', '""')`",`"$groupType`",`"$($nestedGroup.id)`",`"$($nestedGroup.displayName -replace '"', '""')`",`"Contains`""
+                            $resultBuffer.Add($line)
+                            $relationshipsWritten++
+                        }
+                    }
                     
-                    if ($totalRelationships -gt 0) {
-                        # Use NULL for empty fields, output both IDs and names
-                        $nestedGroupIdsString = if ($nestedGroupIds.Count -gt 0) { 
-                            $nestedGroupIds -join " | " 
-                        } else { 
-                            "NULL" 
+                    # OUTPUT ONE ROW PER PARENT GROUP (MemberOf relationship)
+                    if ($parentGroups.Count -gt 0) {
+                        foreach ($parentGroup in $parentGroups) {
+                            $line = "`"$($group.id)`",`"$($group.displayName -replace '"', '""')`",`"$groupType`",`"$($parentGroup.id)`",`"$($parentGroup.displayName -replace '"', '""')`",`"MemberOf`""
+                            $resultBuffer.Add($line)
+                            $relationshipsWritten++
                         }
-                        $nestedGroupNamesString = if ($nestedGroupNames.Count -gt 0) { 
-                            $nestedGroupNames -join " | " 
-                        } else { 
-                            "NULL" 
-                        }
-                        $parentGroupIdsString = if ($parentGroupIds.Count -gt 0) { 
-                            $parentGroupIds -join " | " 
-                        } else { 
-                            "NULL" 
-                        }
-                        $parentGroupNamesString = if ($parentGroupNames.Count -gt 0) { 
-                            $parentGroupNames -join " | " 
-                        } else { 
-                            "NULL" 
-                        }
-                        
-                        $line = "`"$($group.id)`",`"$($group.displayName -replace '"', '""')`",`"$groupType`",`"$nestedGroupIdsString`",`"$nestedGroupNamesString`",`"$($nestedGroups.Count)`",`"$parentGroupIdsString`",`"$parentGroupNamesString`",`"$($parentGroups.Count)`",`"$totalRelationships`""
-                        $resultBuffer.Add($line)
-                        $groupsWithRelationships++
-                        $groupsWrittenToCSV++
-                        
-                        Write-Host "    ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $groupsWrittenToCSV)" -ForegroundColor Green
+                    }
+                    
+                    if ($nestedGroups.Count -gt 0 -or $parentGroups.Count -gt 0) {
+                        Write-Host "    ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $relationshipsWritten)" -ForegroundColor Green
                         
                         # Write to file IMMEDIATELY for small buffers (every 10 results)
                         if ($resultBuffer.Count -ge 10) {
@@ -254,19 +223,18 @@ try {
             
             # Progress update every 500 groups
             if ($totalGroupsProcessed % 500 -eq 0) {
-                Write-Host "  Progress: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $groupsWrittenToCSV written to CSV" -ForegroundColor Cyan
+                Write-Host "  Progress: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written" -ForegroundColor Cyan
                 
                 # Save progress frequently
                 $progress.ProcessedGroups = $totalGroupsProcessed
                 $progress.CloudOnlyGroupsFound = $cloudOnlyGroupsFound
-                $progress.GroupsWithRelationships = $groupsWithRelationships
-                $progress.GroupsWrittenToCSV = $groupsWrittenToCSV
+                $progress.RelationshipsWritten = $relationshipsWritten
                 $progress.LastBatchNumber = $batchNumber
                 Save-Progress -Progress $progress -ProgressFile $progressFile
             }
         }
         
-        Write-Host "Batch $batchNumber complete: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $groupsWrittenToCSV written to CSV" -ForegroundColor Gray
+        Write-Host "Batch $batchNumber complete: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written" -ForegroundColor Gray
     }
 
     # Write any remaining buffer
@@ -291,7 +259,7 @@ try {
     }
 
     # Use repository's file management system
-    $finalFileName = "$($config.FilePrefixes.EntraGroups)_Nested_$timestamp.csv"
+    $finalFileName = "EntraGroups-Relationships_$timestamp.csv"
     Move-ProcessedCSV -SourcePath $tempPath -FinalFileName $finalFileName -Config $config
 
     # Clean up progress file on success
@@ -302,8 +270,7 @@ try {
     # Final results
     Write-Host "Total groups processed: $totalGroupsProcessed" -ForegroundColor White
     Write-Host "Cloud-only groups found: $cloudOnlyGroupsFound" -ForegroundColor Cyan
-    Write-Host "Groups with relationships (written to CSV): $groupsWrittenToCSV" -ForegroundColor Yellow
-    Write-Host "Cloud-only groups excluded (no relationships): $($cloudOnlyGroupsFound - $groupsWrittenToCSV)" -ForegroundColor Gray
+    Write-Host "Relationships written to CSV: $relationshipsWritten" -ForegroundColor Yellow
 
 } catch {
     Write-Error "Error in nested groups collection: $_"
@@ -311,8 +278,7 @@ try {
     # Save progress on error
     $progress.ProcessedGroups = $totalGroupsProcessed
     $progress.CloudOnlyGroupsFound = $cloudOnlyGroupsFound
-    $progress.GroupsWithRelationships = $groupsWithRelationships
-    $progress.GroupsWrittenToCSV = $groupsWrittenToCSV
+    $progress.RelationshipsWritten = $relationshipsWritten
     Save-Progress -Progress $progress -ProgressFile $progressFile
     
     throw

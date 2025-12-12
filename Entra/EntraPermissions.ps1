@@ -5,6 +5,7 @@
 .DESCRIPTION
     Combined script that collects both Entra role assignments and Graph API permissions
     Outputs single CSV with all permission types
+    Uses empty strings for missing values (no NULL)
 #>
 
 [CmdletBinding()]

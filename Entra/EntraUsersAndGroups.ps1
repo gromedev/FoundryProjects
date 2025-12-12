@@ -4,7 +4,10 @@
     Collects Entra ID user data AND group memberships in a single pass
 .DESCRIPTION
     Combined script that collects both basic user data and group memberships
-    Outputs two separate CSV files from a single user iteration
+    Outputs THREE separate CSV files from a single user iteration:
+    1. EntraUsers-BasicData - Core user info (one row per user)
+    2. EntraUsers-Licenses - User licenses (one row per license)
+    3. EntraUsers-Groups - User group memberships (one row per group)
 #>
 
 [CmdletBinding()]
@@ -19,20 +22,25 @@ Initialize-DataPaths -Config $config
 
 Write-Host $PSScriptRoot
 
-# Setup paths for BOTH outputs
+# Setup paths for THREE outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
 $tempPathUsers = Join-Path $config.Paths.Temp "$($config.FilePrefixes.EntraUsers)_$timestamp.csv"
+$tempPathLicenses = Join-Path $config.Paths.Temp "$($config.FilePrefixes.EntraUsers)-Licenses_$timestamp.csv"
 $tempPathGroups = Join-Path $config.Paths.Temp "$($config.FilePrefixes.EntraGroups)_$timestamp.csv"
 
-# Initialize CSV headers - Keep both GroupId AND GroupName
-$csvHeaderUsers = "`"UserPrincipalName`",`"Id`",`"accountEnabled`",`"UserType`",`"assignedLicenses`",`"CustomSecurityAttributes`",`"createdDateTime`",`"LastSignInDateTime`",`"OnPremisesSyncEnabled`",`"OnPremisesSamAccountName`",`"PasswordPolicies`""
+# Initialize CSV headers
+$csvHeaderUsers = "`"UserPrincipalName`",`"Id`",`"accountEnabled`",`"UserType`",`"CustomSecurityAttributes`",`"createdDateTime`",`"LastSignInDateTime`",`"OnPremisesSyncEnabled`",`"OnPremisesSamAccountName`",`"PasswordPolicies`""
 Set-Content -Path $tempPathUsers -Value $csvHeaderUsers -Encoding UTF8
+
+$csvHeaderLicenses = "`"UserPrincipalName`",`"UserId`",`"License`""
+Set-Content -Path $tempPathLicenses -Value $csvHeaderLicenses -Encoding UTF8
 
 $csvHeaderGroups = "`"UserPrincipalName`",`"GroupId`",`"GroupName`",`"GroupRoleAssignable`",`"GroupType`",`"GroupMembershipType`",`"GroupSecurityEnabled`",`"MembershipPath`""
 Set-Content -Path $tempPathGroups -Value $csvHeaderGroups -Encoding UTF8
 
 # Initialize mutexes for thread-safe file writing (one per file)
 $mutexUsers = [System.Threading.Mutex]::new($false, "EntraUsersCSVMutex")
+$mutexLicenses = [System.Threading.Mutex]::new($false, "EntraLicensesCSVMutex")
 $mutexGroups = [System.Threading.Mutex]::new($false, "EntraGroupsCSVMutex")
 
 try {
@@ -59,7 +67,7 @@ try {
     $selectFields = "userPrincipalName,id,accountEnabled,userType,assignedLicenses,customSecurityAttributes,createdDateTime,signInActivity,onPremisesSyncEnabled,onPremisesSamAccountName,passwordPolicies"
     $nextLink = Get-InitialUserQuery -Config $config.EntraID -SelectFields $selectFields -BatchSize $batchSize
     
-    Write-Host "Starting combined user and group collection..."
+    Write-Host "Starting combined user, license, and group collection..."
     
     while ($nextLink) {
         $batchNumber++
@@ -105,8 +113,9 @@ try {
                 )
             }
             
-            # Process users in parallel - collect BOTH user data AND group memberships
+            # Process users in parallel - collect user data, licenses, AND group memberships
             $batchResultsUsers = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsLicenses = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             $batchResultsGroups = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             
             $users | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
@@ -115,52 +124,67 @@ try {
                 
                 $user = $_
                 $localBatchResultsUsers = $using:batchResultsUsers
+                $localBatchResultsLicenses = $using:batchResultsLicenses
                 $localBatchResultsGroups = $using:batchResultsGroups
                 $localSkuLookup = $using:skuLookup
                 $localConfig = $using:config
                 $localGroupCache = $using:groupCache
-                $errorValue = "NULL"
                 
                 try {
                     # ===========================================
-                    # PART 1: USER BASIC DATA
+                    # PART 1: USER BASIC DATA (no licenses)
                     # ===========================================
-                    
-                    # Convert licenses to SKU names
-                    $licenses = if ($user.assignedLicenses) {
-                        ($user.assignedLicenses.skuId | ForEach-Object { 
-                            $localSkuLookup[$_] 
-                        } | Where-Object { $_ }) -join ' | '
-                    } else { $errorValue }
                     
                     # Handle custom attributes
                     $attributes = if ($user.customSecurityAttributes -and 
                                      ($user.customSecurityAttributes | ConvertTo-Json -Compress) -ne "null") {
                         $user.customSecurityAttributes | ConvertTo-Json -Compress
-                    } else { $errorValue }
+                    } else { "" }
+                    
+                    # Handle password policies
+                    $passwordPolicies = if ($user.passwordPolicies) {
+                        $user.passwordPolicies
+                    } else { "" }
                     
                     # Use pre-converted values
-                    $createdDateTime = if ($user.StandardCreatedDateTime) { $user.StandardCreatedDateTime } else { $errorValue }
-                    $lastSignInDateTime = if ($user.StandardLastSignInDateTime) { $user.StandardLastSignInDateTime } else { $errorValue }
+                    $createdDateTime = if ($user.StandardCreatedDateTime) { $user.StandardCreatedDateTime } else { "" }
+                    $lastSignInDateTime = if ($user.StandardLastSignInDateTime) { $user.StandardLastSignInDateTime } else { "" }
                     
-                    # Build user data line (UserIdentifier removed)
-                    $lineUser = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`",`"{10}`"" -f `
-                        ($user.userPrincipalName ?? $errorValue),
-                        ($user.id ?? $errorValue),
-                        ($user.StandardAccountEnabled ?? $errorValue),
-                        ($user.userType ?? $errorValue),
-                        $licenses,
+                    # Build user data line (without licenses)
+                    $lineUser = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
+                        ($user.userPrincipalName ?? ""),
+                        ($user.id ?? ""),
+                        ($user.StandardAccountEnabled ?? ""),
+                        ($user.userType ?? ""),
                         $attributes,
                         $createdDateTime,
                         $lastSignInDateTime,
-                        ($user.StandardOnPremisesSyncEnabled ?? $errorValue),
-                        ($user.onPremisesSamAccountName ?? $errorValue),
-                        ($user.passwordPolicies ?? $errorValue)
+                        ($user.StandardOnPremisesSyncEnabled ?? ""),
+                        ($user.onPremisesSamAccountName ?? ""),
+                        $passwordPolicies
                     
                     $localBatchResultsUsers.Add($lineUser)
                     
                     # ===========================================
-                    # PART 2: USER GROUP MEMBERSHIPS
+                    # PART 2: USER LICENSES (separate CSV)
+                    # ===========================================
+                    
+                    if ($user.assignedLicenses -and $user.assignedLicenses.Count -gt 0) {
+                        foreach ($license in $user.assignedLicenses) {
+                            $licenseName = $localSkuLookup[$license.skuId]
+                            if ($licenseName) {
+                                $lineLicense = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                    $user.userPrincipalName,
+                                    $user.id,
+                                    $licenseName
+                                
+                                $localBatchResultsLicenses.Add($lineLicense)
+                            }
+                        }
+                    }
+                    
+                    # ===========================================
+                    # PART 3: USER GROUP MEMBERSHIPS
                     # ===========================================
                     
                     # Get user's direct group memberships
@@ -182,13 +206,13 @@ try {
                         # User has no groups - add empty entry
                         $lineGroup = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`"" -f `
                             $user.userPrincipalName,
-                            $errorValue,
-                            $errorValue,
-                            $errorValue,
-                            $errorValue,
-                            $errorValue,
-                            $errorValue,
-                            $errorValue
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            ""
                         $localBatchResultsGroups.Add($lineGroup)
                     }
                     else {
@@ -213,7 +237,7 @@ try {
                                         "Distribution"
                                     }
                                     else {
-                                        $errorValue
+                                        ""
                                     }
                                 }
                                 else {
@@ -251,7 +275,7 @@ try {
                 }
             }
             
-            # Write BOTH batches to their respective files (thread-safe)
+            # Write ALL THREE batches to their respective files (thread-safe)
             if ($batchResultsUsers.Count -gt 0) {
                 try {
                     $mutexUsers.WaitOne() | Out-Null
@@ -259,6 +283,16 @@ try {
                 }
                 finally {
                     $mutexUsers.ReleaseMutex()
+                }
+            }
+            
+            if ($batchResultsLicenses.Count -gt 0) {
+                try {
+                    $mutexLicenses.WaitOne() | Out-Null
+                    $batchResultsLicenses | Add-Content -Path $tempPathLicenses -Encoding UTF8
+                }
+                finally {
+                    $mutexLicenses.ReleaseMutex()
                 }
             }
             
@@ -279,16 +313,18 @@ try {
     
     Write-Host "Processing complete. Total users processed: $totalProcessed" -ForegroundColor Green
     
-    # Move BOTH files to final location
+    # Move ALL THREE files to final location
     Move-ProcessedCSV -SourcePath $tempPathUsers -FinalFileName "$($config.FilePrefixes.EntraUsers)_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathLicenses -FinalFileName "$($config.FilePrefixes.EntraUsers)-Licenses_$timestamp.csv" -Config $config
     Move-ProcessedCSV -SourcePath $tempPathGroups -FinalFileName "$($config.FilePrefixes.EntraGroups)_$timestamp.csv" -Config $config
 }
 catch {
-    Write-Error "Error collecting Entra users and groups: $_"
+    Write-Error "Error collecting Entra users, licenses, and groups: $_"
     throw
 }
 finally {
     if ($mutexUsers) { $mutexUsers.Dispose() }
+    if ($mutexLicenses) { $mutexLicenses.Dispose() }
     if ($mutexGroups) { $mutexGroups.Dispose() }
     if ($script:groupCache) {
         $script:groupCache.Clear()

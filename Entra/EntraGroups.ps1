@@ -4,7 +4,10 @@
     Collects Entra ID cloud-only groups with parallel processing
 .DESCRIPTION
     Collects basic group properties for all cloud-only groups
-    GroupIdentifier column REMOVED (redundant with displayName)
+    Outputs THREE separate CSV files:
+    1. EntraGroups-BasicData - Core group info (one row per group)
+    2. EntraGroups-Types - Group types (one row per type)
+    3. EntraGroups-Tags - Group tags (one row per tag)
 #>
 
 [CmdletBinding()]
@@ -19,17 +22,23 @@ Initialize-DataPaths -Config $config
 
 Write-Host $PSScriptRoot
 
-# Setup paths
+# Setup paths for THREE outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
-$tempPath = Join-Path $config.Paths.Temp "EntraGroups_$timestamp.csv"
+$tempPathBasic = Join-Path $config.Paths.Temp "EntraGroups-BasicData_$timestamp.csv"
+$tempPathTypes = Join-Path $config.Paths.Temp "EntraGroups-Types_$timestamp.csv"
+$tempPathTags = Join-Path $config.Paths.Temp "EntraGroups-Tags_$timestamp.csv"
 
-# Initialize CSV with headers - GroupIdentifier REMOVED
-$csvHeader = "`"displayName`",`"Id`",`"classification`",`"deletedDateTime`",`"description`",`"groupTypes`",`"mailEnabled`",`"membershipRule`",`"securityEnabled`",`"isAssignableToRole`""
-Set-Content -Path $tempPath -Value $csvHeader -Encoding UTF8
+# Initialize CSV with headers
+$csvHeaderBasic = "`"displayName`",`"Id`",`"classification`",`"deletedDateTime`",`"description`",`"mailEnabled`",`"membershipRule`",`"securityEnabled`",`"isAssignableToRole`""
+Set-Content -Path $tempPathBasic -Value $csvHeaderBasic -Encoding UTF8
 
-Write-Host "CSV Header created with 10 fields in order:" -ForegroundColor Yellow
-Write-Host "1. displayName, 2. Id, 3. classification, 4. deletedDateTime, 5. description" -ForegroundColor Gray  
-Write-Host "6. groupTypes, 7. mailEnabled, 8. membershipRule, 9. securityEnabled, 10. isAssignableToRole" -ForegroundColor Gray
+$csvHeaderTypes = "`"GroupId`",`"GroupName`",`"GroupType`""
+Set-Content -Path $tempPathTypes -Value $csvHeaderTypes -Encoding UTF8
+
+$csvHeaderTags = "`"GroupId`",`"GroupName`",`"Tag`""
+Set-Content -Path $tempPathTags -Value $csvHeaderTags -Encoding UTF8
+
+Write-Host "CSV Headers created" -ForegroundColor Yellow
 
 # Proper CSV escaping function with explicit empty quotes for nulls
 function ConvertTo-SafeCSV {
@@ -61,7 +70,7 @@ try {
     $batchNumber = 0
     
     # Use BETA endpoint for reliable isAssignableToRole values
-    $selectFields = "displayName,id,classification,deletedDateTime,description,groupTypes,mailEnabled,membershipRule,securityEnabled,isAssignableToRole,onPremisesSyncEnabled"
+    $selectFields = "displayName,id,classification,deletedDateTime,description,groupTypes,mailEnabled,membershipRule,securityEnabled,isAssignableToRole,onPremisesSyncEnabled,tags"
     
     $nextLink = "https://graph.microsoft.com/beta/groups?`$select=$selectFields&`$top=$batchSize"
     
@@ -111,7 +120,9 @@ try {
             }
             
             # Process groups in parallel
-            $batchResults = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsBasic = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsTypes = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsTags = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             
             $groups | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
                 # Import the CSV function in parallel scope
@@ -128,8 +139,9 @@ try {
                 }
                 
                 $group = $_
-                $localBatchResults = $using:batchResults
-                $errorValue = "NULL"
+                $localBatchResultsBasic = $using:batchResultsBasic
+                $localBatchResultsTypes = $using:batchResultsTypes
+                $localBatchResultsTags = $using:batchResultsTags
                 
                 try {
                     # Skip AD-synced groups
@@ -137,62 +149,86 @@ try {
                         continue
                     }
                     
-                    # Properly escape groupTypes array
-                    $groupTypesString = if ($group.groupTypes -and $group.groupTypes.Count -gt 0) {
-                        $safeTypes = $group.groupTypes | ForEach-Object { 
-                            $_ -replace '"', '""' -replace ",", ";" -replace "`r`n", " " 
-                        }
-                        ConvertTo-SafeCSV -Value ($safeTypes -join ' | ')
-                    } else { ConvertTo-SafeCSV -Value $errorValue }
-                    
                     # Use pre-converted date values
-                    $deletedDateTime = ConvertTo-SafeCSV -Value ($group.StandardDeletedDateTime ?? $errorValue)
+                    $deletedDateTime = ConvertTo-SafeCSV -Value ($group.StandardDeletedDateTime ?? "")
                     
                     # Properly escape ALL text fields
-                    $displayName = ConvertTo-SafeCSV -Value ($group.displayName ?? $errorValue)
-                    $classification = ConvertTo-SafeCSV -Value ($group.classification ?? $errorValue)
-                    $description = ConvertTo-SafeCSV -Value ($group.description ?? $errorValue)
-                    $membershipRule = ConvertTo-SafeCSV -Value ($group.membershipRule ?? $errorValue)
+                    $displayName = ConvertTo-SafeCSV -Value ($group.displayName ?? "")
+                    $classification = ConvertTo-SafeCSV -Value ($group.classification ?? "")
+                    $description = ConvertTo-SafeCSV -Value ($group.description ?? "")
+                    $membershipRule = ConvertTo-SafeCSV -Value ($group.membershipRule ?? "")
                     
-                    # Create line with ALL fields properly escaped (GroupIdentifier removed)
-                    $line = "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9}" -f `
+                    # Create basic group line (WITHOUT groupTypes and tags)
+                    $lineBasic = "{0},{1},{2},{3},{4},{5},{6},{7},{8}" -f `
                         $displayName,
-                        (ConvertTo-SafeCSV -Value ($group.id ?? $errorValue)),
+                        (ConvertTo-SafeCSV -Value ($group.id ?? "")),
                         $classification,
                         $deletedDateTime,
                         $description,
-                        $groupTypesString,
-                        (ConvertTo-SafeCSV -Value ($group.StandardMailEnabled ?? $errorValue)),
+                        (ConvertTo-SafeCSV -Value ($group.StandardMailEnabled ?? "")),
                         $membershipRule,
-                        (ConvertTo-SafeCSV -Value ($group.StandardSecurityEnabled ?? $errorValue)),
-                        (ConvertTo-SafeCSV -Value ($group.StandardIsAssignableToRole ?? $errorValue))
+                        (ConvertTo-SafeCSV -Value ($group.StandardSecurityEnabled ?? "")),
+                        (ConvertTo-SafeCSV -Value ($group.StandardIsAssignableToRole ?? ""))
                     
-                    # Verify field count
-                    $fieldCount = ($line -split ',(?=(?:[^"]*"[^"]*")*[^"]*$)').Count
-                    if ($fieldCount -ne 10) {
-                        Write-Warning "FIELD COUNT MISMATCH for group $($group.displayName): Expected 10 fields, got $fieldCount"
+                    $localBatchResultsBasic.Add($lineBasic)
+                    
+                    # ===========================================
+                    # GROUP TYPES (separate CSV)
+                    # ===========================================
+                    if ($group.groupTypes -and $group.groupTypes.Count -gt 0) {
+                        foreach ($groupType in $group.groupTypes) {
+                            $lineType = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                $group.id,
+                                ($group.displayName ?? ""),
+                                ($groupType ?? "")
+                            
+                            $localBatchResultsTypes.Add($lineType)
+                        }
                     }
                     
-                    $localBatchResults.Add($line)
+                    # ===========================================
+                    # GROUP TAGS (separate CSV)
+                    # ===========================================
+                    if ($group.tags -and $group.tags.Count -gt 0) {
+                        foreach ($tag in $group.tags) {
+                            $lineTag = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                $group.id,
+                                ($group.displayName ?? ""),
+                                ($tag ?? "")
+                            
+                            $localBatchResultsTags.Add($lineTag)
+                        }
+                    }
                 }
                 catch {
                     Write-Warning "Error processing group $($group.displayName): $_"
                 }
             }
             
-            # Write batch to file
-            if ($batchResults.Count -gt 0) {
-                $batchResults | Add-Content -Path $tempPath -Encoding UTF8
-                $totalProcessed += $groups.Count
-                Write-Host "Completed batch $batchNumber. Total groups processed: $totalProcessed"
+            # Write batches to files
+            if ($batchResultsBasic.Count -gt 0) {
+                $batchResultsBasic | Add-Content -Path $tempPathBasic -Encoding UTF8
             }
+            
+            if ($batchResultsTypes.Count -gt 0) {
+                $batchResultsTypes | Add-Content -Path $tempPathTypes -Encoding UTF8
+            }
+            
+            if ($batchResultsTags.Count -gt 0) {
+                $batchResultsTags | Add-Content -Path $tempPathTags -Encoding UTF8
+            }
+            
+            $totalProcessed += $groups.Count
+            Write-Host "Completed batch $batchNumber. Total groups processed: $totalProcessed"
         }
     }
     
     Write-Host "Processing complete. Total cloud-only groups processed: $totalProcessed" -ForegroundColor Green
     
-    # Move to final location
-    Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "EntraGroups_$timestamp.csv" -Config $config
+    # Move ALL THREE files to final location
+    Move-ProcessedCSV -SourcePath $tempPathBasic -FinalFileName "EntraGroups-BasicData_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathTypes -FinalFileName "EntraGroups-Types_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathTags -FinalFileName "EntraGroups-Tags_$timestamp.csv" -Config $config
 }
 catch {
     Write-Error "Error collecting Entra groups: $_"
