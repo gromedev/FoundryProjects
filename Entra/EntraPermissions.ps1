@@ -4,8 +4,9 @@
     Collects ALL Entra ID permissions (Roles + Graph API) in a single combined CSV
 .DESCRIPTION
     Combined script that collects both Entra role assignments and Graph API permissions
-    Outputs single CSV with all permission types
-    Uses empty strings for missing values (no NULL)
+    Outputs ONE separate CSV files:
+    1. EntraUsers-AllPermissions_
+
 #>
 
 [CmdletBinding()]
@@ -49,61 +50,69 @@ try {
     # Get all ACTIVE role assignments in bulk
     Write-Host "Collecting all active role assignments..."
     try {
-        $activeAssignments = Invoke-GraphRequestWithPaging `
-            -Uri "https://graph.microsoft.com/beta/roleManagement/directory/roleAssignmentScheduleInstances?`$expand=principal,roleDefinition&`$select=principalId,assignmentType,principal,roleDefinition" `
-            -Config $config.EntraID
+        $nextLink = "https://graph.microsoft.com/beta/roleManagement/directory/roleAssignmentScheduleInstances?`$expand=principal,roleDefinition&`$select=principalId,assignmentType,principal,roleDefinition"
+        $assignmentCount = 0
         
-        Write-Host "Found $($activeAssignments.Count) active role assignments"
-        
-        foreach ($assignment in $activeAssignments) {
-            # Determine assignment type
-            $assignmentType = if ($assignment.assignmentType -eq "Assigned") {
-                "Permanent"
-            } else {
-                "PIM"
-            }
+        while ($nextLink) {
+            $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink
+            $activeAssignments = $response.value
+            $nextLink = $response.'@odata.nextLink'
             
-            # Process user assignments
-            if ($assignment.principal.'@odata.type' -eq '#microsoft.graph.user') {
-                $userId = $assignment.principal.id
+            if ($activeAssignments.Count -gt 0) {
+                $assignmentCount += $activeAssignments.Count
                 
-                if (-not $userEntraRoles.ContainsKey($userId)) {
-                    $userEntraRoles[$userId] = @()
-                }
-                
-                $userEntraRoles[$userId] += @{
-                    RoleName = $assignment.roleDefinition.displayName
-                    AssignmentType = $assignmentType
-                    UserPrincipalName = $assignment.principal.userPrincipalName
-                }
-            }
-            # Process group assignments
-            elseif ($assignment.principal.'@odata.type' -eq '#microsoft.graph.group' -and
-                    $securityGroupMembers.ContainsKey($assignment.principal.id)) {
-                
-                $groupInfo = $securityGroupMembers[$assignment.principal.id]
-                $groupAssignmentType = "Group-$assignmentType ($($groupInfo.GroupDisplayName))"
-                
-                foreach ($member in $groupInfo.Members) {
-                    if ($member.Type -eq "User" -and $member.UserPrincipalName) {
-                        $memberKey = $member.UserPrincipalName.ToLower()
+                foreach ($assignment in $activeAssignments) {
+                    # Determine assignment type
+                    $assignmentType = if ($assignment.assignmentType -eq "Assigned") {
+                        "Permanent"
+                    } else {
+                        "PIM"
+                    }
+                    
+                    # Process user assignments
+                    if ($assignment.principal.'@odata.type' -eq '#microsoft.graph.user') {
+                        $userId = $assignment.principal.id
                         
-                        if (-not $userEntraRoles.ContainsKey($memberKey)) {
-                            $userEntraRoles[$memberKey] = @()
+                        if (-not $userEntraRoles.ContainsKey($userId)) {
+                            $userEntraRoles[$userId] = @()
                         }
                         
-                        $userEntraRoles[$memberKey] += @{
+                        $userEntraRoles[$userId] += @{
                             RoleName = $assignment.roleDefinition.displayName
-                            AssignmentType = $groupAssignmentType
-                            UserPrincipalName = $member.UserPrincipalName
-                            IsGroupBased = $true
+                            AssignmentType = $assignmentType
+                            UserPrincipalName = $assignment.principal.userPrincipalName
+                        }
+                    }
+                    # Process group assignments
+                    elseif ($assignment.principal.'@odata.type' -eq '#microsoft.graph.group' -and
+                            $securityGroupMembers.ContainsKey($assignment.principal.id)) {
+                        
+                        $groupInfo = $securityGroupMembers[$assignment.principal.id]
+                        $groupAssignmentType = "Group-$assignmentType ($($groupInfo.GroupDisplayName))"
+                        
+                        foreach ($member in $groupInfo.Members) {
+                            if ($member.Type -eq "User" -and $member.UserPrincipalName) {
+                                $memberKey = $member.UserPrincipalName.ToLower()
+                                
+                                if (-not $userEntraRoles.ContainsKey($memberKey)) {
+                                    $userEntraRoles[$memberKey] = @()
+                                }
+                                
+                                $userEntraRoles[$memberKey] += @{
+                                    RoleName = $assignment.roleDefinition.displayName
+                                    AssignmentType = $groupAssignmentType
+                                    UserPrincipalName = $member.UserPrincipalName
+                                    IsGroupBased = $true
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         
-        $activeAssignments = $null
+        Write-Host "Found $assignmentCount active role assignments"
+        
         [System.GC]::Collect()
         
     } catch {
@@ -113,54 +122,62 @@ try {
     # Get all ELIGIBLE role assignments in bulk
     Write-Host "Collecting all eligible role assignments..."
     try {
-        $eligibleAssignments = Invoke-GraphRequestWithPaging `
-            -Uri "https://graph.microsoft.com/beta/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal,roleDefinition&`$select=principalId,principal,roleDefinition" `
-            -Config $config.EntraID
+        $nextLink = "https://graph.microsoft.com/beta/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal,roleDefinition&`$select=principalId,principal,roleDefinition"
+        $assignmentCount = 0
         
-        Write-Host "Found $($eligibleAssignments.Count) eligible role assignments"
-        
-        foreach ($assignment in $eligibleAssignments) {
-            # Process user assignments
-            if ($assignment.principal.'@odata.type' -eq '#microsoft.graph.user') {
-                $userId = $assignment.principal.id
+        while ($nextLink) {
+            $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink
+            $eligibleAssignments = $response.value
+            $nextLink = $response.'@odata.nextLink'
+            
+            if ($eligibleAssignments.Count -gt 0) {
+                $assignmentCount += $eligibleAssignments.Count
                 
-                if (-not $userEntraRoles.ContainsKey($userId)) {
-                    $userEntraRoles[$userId] = @()
-                }
-                
-                $userEntraRoles[$userId] += @{
-                    RoleName = $assignment.roleDefinition.displayName
-                    AssignmentType = "PIM"
-                    UserPrincipalName = $assignment.principal.userPrincipalName
-                }
-            }
-            # Process group assignments
-            elseif ($assignment.principal.'@odata.type' -eq '#microsoft.graph.group' -and
-                    $securityGroupMembers.ContainsKey($assignment.principal.id)) {
-                
-                $groupInfo = $securityGroupMembers[$assignment.principal.id]
-                $groupAssignmentType = "Group-PIM ($($groupInfo.GroupDisplayName))"
-                
-                foreach ($member in $groupInfo.Members) {
-                    if ($member.Type -eq "User" -and $member.UserPrincipalName) {
-                        $memberKey = $member.UserPrincipalName.ToLower()
+                foreach ($assignment in $eligibleAssignments) {
+                    # Process user assignments
+                    if ($assignment.principal.'@odata.type' -eq '#microsoft.graph.user') {
+                        $userId = $assignment.principal.id
                         
-                        if (-not $userEntraRoles.ContainsKey($memberKey)) {
-                            $userEntraRoles[$memberKey] = @()
+                        if (-not $userEntraRoles.ContainsKey($userId)) {
+                            $userEntraRoles[$userId] = @()
                         }
                         
-                        $userEntraRoles[$memberKey] += @{
+                        $userEntraRoles[$userId] += @{
                             RoleName = $assignment.roleDefinition.displayName
-                            AssignmentType = $groupAssignmentType
-                            UserPrincipalName = $member.UserPrincipalName
-                            IsGroupBased = $true
+                            AssignmentType = "PIM"
+                            UserPrincipalName = $assignment.principal.userPrincipalName
+                        }
+                    }
+                    # Process group assignments
+                    elseif ($assignment.principal.'@odata.type' -eq '#microsoft.graph.group' -and
+                            $securityGroupMembers.ContainsKey($assignment.principal.id)) {
+                        
+                        $groupInfo = $securityGroupMembers[$assignment.principal.id]
+                        $groupAssignmentType = "Group-PIM ($($groupInfo.GroupDisplayName))"
+                        
+                        foreach ($member in $groupInfo.Members) {
+                            if ($member.Type -eq "User" -and $member.UserPrincipalName) {
+                                $memberKey = $member.UserPrincipalName.ToLower()
+                                
+                                if (-not $userEntraRoles.ContainsKey($memberKey)) {
+                                    $userEntraRoles[$memberKey] = @()
+                                }
+                                
+                                $userEntraRoles[$memberKey] += @{
+                                    RoleName = $assignment.roleDefinition.displayName
+                                    AssignmentType = $groupAssignmentType
+                                    UserPrincipalName = $member.UserPrincipalName
+                                    IsGroupBased = $true
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         
-        $eligibleAssignments = $null
+        Write-Host "Found $assignmentCount eligible role assignments"
+        
         [System.GC]::Collect()
         
     } catch {
@@ -179,54 +196,62 @@ try {
     # Get all OAuth2 permission grants (delegated permissions) in bulk
     Write-Host "Collecting all OAuth2 permission grants..."
     try {
-        $oauth2Grants = Invoke-GraphRequestWithPaging `
-            -Uri "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" `
-            -Config $config.EntraID
+        $nextLink = "https://graph.microsoft.com/v1.0/oauth2PermissionGrants"
+        $grantCount = 0
         
-        Write-Host "Found $($oauth2Grants.Count) OAuth2 permission grants"
-        
-        foreach ($grant in $oauth2Grants) {
-            if ($grant.principalId -and $grant.scope) {
-                # Get service principal info for resource (API being accessed)
-                if ($grant.resourceId -and -not $spCache.ContainsKey($grant.resourceId)) {
-                    try {
-                        $sp = Invoke-GraphWithRetry `
-                            -Uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($grant.resourceId)" `
-                            -Config $config.EntraID
-                        
-                        $spCache[$grant.resourceId] = @{
-                            AppId = $sp.appId
-                            DisplayName = $sp.displayName
+        while ($nextLink) {
+            $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink
+            $oauth2Grants = $response.value
+            $nextLink = $response.'@odata.nextLink'
+            
+            if ($oauth2Grants.Count -gt 0) {
+                $grantCount += $oauth2Grants.Count
+                
+                foreach ($grant in $oauth2Grants) {
+                    if ($grant.principalId -and $grant.scope) {
+                        # Get service principal info for resource (API being accessed)
+                        if ($grant.resourceId -and -not $spCache.ContainsKey($grant.resourceId)) {
+                            try {
+                                $sp = Invoke-GraphWithRetry `
+                                    -Uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($grant.resourceId)" `
+                                    -Config $config.EntraID
+                                
+                                $spCache[$grant.resourceId] = @{
+                                    AppId = $sp.appId
+                                    DisplayName = $sp.displayName
+                                }
+                            }
+                            catch {
+                                # Cache miss
+                            }
                         }
-                    }
-                    catch {
-                        # Cache miss
-                    }
-                }
-                
-                $resourceInfo = $spCache[$grant.resourceId]
-                
-                # Process each scope
-                foreach ($scope in ($grant.scope -split ' ')) {
-                    if ([string]::IsNullOrWhiteSpace($scope)) { continue }
-                    
-                    if (-not $userGraphPermissions.ContainsKey($grant.principalId)) {
-                        $userGraphPermissions[$grant.principalId] = @()
-                    }
-                    
-                    $userGraphPermissions[$grant.principalId] += @{
-                        PermissionType = "Delegated"
-                        Permission = $scope
-                        AppId = $grant.clientId
-                        AppName = ""  # Client app name not available from OAuth2 grants
-                        ResourceId = if ($resourceInfo) { $resourceInfo.AppId } else { "" }
-                        ResourceName = if ($resourceInfo) { $resourceInfo.DisplayName } else { "" }
+                        
+                        $resourceInfo = $spCache[$grant.resourceId]
+                        
+                        # Process each scope
+                        foreach ($scope in ($grant.scope -split ' ')) {
+                            if ([string]::IsNullOrWhiteSpace($scope)) { continue }
+                            
+                            if (-not $userGraphPermissions.ContainsKey($grant.principalId)) {
+                                $userGraphPermissions[$grant.principalId] = @()
+                            }
+                            
+                            $userGraphPermissions[$grant.principalId] += @{
+                                PermissionType = "Delegated"
+                                Permission = $scope
+                                AppId = $grant.clientId
+                                AppName = ""  # Client app name not available from OAuth2 grants
+                                ResourceId = if ($resourceInfo) { $resourceInfo.AppId } else { "" }
+                                ResourceName = if ($resourceInfo) { $resourceInfo.DisplayName } else { "" }
+                            }
+                        }
                     }
                 }
             }
         }
         
-        $oauth2Grants = $null
+        Write-Host "Found $grantCount OAuth2 permission grants"
+        
         [System.GC]::Collect()
         
     } catch {

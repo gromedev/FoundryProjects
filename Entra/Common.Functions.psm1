@@ -2,7 +2,29 @@
 <#
 .SYNOPSIS
     Common functions for data collection
-#>
+    Save-Progress, Get-Progress, Get-GraphBatch, Invoke-GraphRequestWithPaging, Get-InitialUserQuery
+
+    | Function | EntraUsersAndGroups | EntraGroups | EntraGroupsNested | EntraPermissions | EntraServicePrincipals |
+
+| Invoke-GraphRequestWithPaging | X | X | X | ✓ | X |
+---> EntraPermissions
+
+| Save-Progress | X | X | ✓ | X | X |
+---> EntraGroupsNested
+
+| Get-Progress | X | X | ✓ | X | X |
+---> EntraGroupsNested
+
+
+| Get-InitialUserQuery | ✓ | X | X | ✓ | X |
+---> EntraUsersAndGroups
+--->  EntraPermissions
+
+| Get-GraphBatch | X | ✓ | ✓ | ✓ | ✓ |
+---> EntraUsersAndGroups
+
+#> 
+
 
 $script:Config = @{
     Modules = @{

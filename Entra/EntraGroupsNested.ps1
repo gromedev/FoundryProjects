@@ -3,9 +3,9 @@
 .SYNOPSIS
     Shows cloud-only groups with nesting relationships
 .DESCRIPTION
-    Collects group nesting data (parent/child relationships)
-    Outputs one row per relationship (either Contains or MemberOf)
-    Uses empty strings for missing values (no NULL)
+    Collects group nesting data (parent/child relationships), Outputs one row per relationship (either Contains or MemberOf)
+    Outputs ONE separate CSV files:
+    1. EntraGroups-Relationships
 #>
 
 [CmdletBinding()]
