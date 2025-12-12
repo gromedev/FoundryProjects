@@ -34,12 +34,6 @@ $script:Config = @{
         SizeThresholdPercent = 20
         DateFormat = "yyyyMMdd_HHmmss"
     }
-    FilePrefixes = @{
-        EntraUsers = "EntraUsers-BasicData"
-        EntraPermissions = "EntraUsers-Permissions"
-        EntraGroups = "EntraUsers-Groups"
-        EntraGraphPermissions = "EntraUsers-GraphPermissions"
-    }
     Metrics = @{
         StaleAccountThresholdDays = 90
         HashTableLimits = @{

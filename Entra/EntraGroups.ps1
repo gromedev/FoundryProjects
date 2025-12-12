@@ -14,7 +14,7 @@
 param()
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
 
 # Get configuration
 $config = Get-Config
@@ -29,7 +29,7 @@ $tempPathTypes = Join-Path $config.Paths.Temp "EntraGroups-Types_$timestamp.csv"
 $tempPathTags = Join-Path $config.Paths.Temp "EntraGroups-Tags_$timestamp.csv"
 
 # Initialize CSV with headers
-$csvHeaderBasic = "`"displayName`",`"Id`",`"classification`",`"deletedDateTime`",`"description`",`"mailEnabled`",`"membershipRule`",`"securityEnabled`",`"isAssignableToRole`""
+$csvHeaderBasic = "`"GroupId`",`"GroupName`",`"classification`",`"deletedDateTime`",`"description`",`"mailEnabled`",`"membershipRule`",`"securityEnabled`",`"isAssignableToRole`""
 Set-Content -Path $tempPathBasic -Value $csvHeaderBasic -Encoding UTF8
 
 $csvHeaderTypes = "`"GroupId`",`"GroupName`",`"GroupType`""
@@ -160,8 +160,8 @@ try {
                     
                     # Create basic group line (WITHOUT groupTypes and tags)
                     $lineBasic = "{0},{1},{2},{3},{4},{5},{6},{7},{8}" -f `
-                        $displayName,
                         (ConvertTo-SafeCSV -Value ($group.id ?? "")),
+                        $displayName,
                         $classification,
                         $deletedDateTime,
                         $description,
@@ -172,9 +172,9 @@ try {
                     
                     $localBatchResultsBasic.Add($lineBasic)
                     
-
+                    # ===========================================
                     # GROUP TYPES (separate CSV)
-
+                    # ===========================================
                     if ($group.groupTypes -and $group.groupTypes.Count -gt 0) {
                         foreach ($groupType in $group.groupTypes) {
                             $lineType = "`"{0}`",`"{1}`",`"{2}`"" -f `
@@ -186,9 +186,9 @@ try {
                         }
                     }
                     
-
+                    # ===========================================
                     # GROUP TAGS (separate CSV)
-
+                    # ===========================================
                     if ($group.tags -and $group.tags.Count -gt 0) {
                         foreach ($tag in $group.tags) {
                             $lineTag = "`"{0}`",`"{1}`",`"{2}`"" -f `

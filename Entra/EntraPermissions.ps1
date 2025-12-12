@@ -14,7 +14,7 @@ param(
 )
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
+Import-Module (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1") -Force
 
 # Get configuration
 $config = Get-Config
@@ -25,7 +25,7 @@ $timestamp = Get-Date -Format $config.FileManagement.DateFormat
 $tempPath = Join-Path $config.Paths.Temp "EntraUsers-AllPermissions_$timestamp.csv"
 
 # Initialize CSV with combined headers - Keep both IDs and Names
-$csvHeader = "`"UserPrincipalName`",`"EntraRole`",`"EntraRoleType`",`"GraphPermissionType`",`"GraphPermission`",`"AppId`",`"AppName`",`"ResourceId`",`"ResourceName`""
+$csvHeader = "`"UserPrincipalName`",`"Id`",`"EntraRole`",`"EntraRoleType`",`"GraphPermissionType`",`"GraphPermission`",`"AppId`",`"AppName`",`"ResourceId`",`"ResourceName`""
 Set-Content -Path $tempPath -Value $csvHeader -Encoding UTF8
 
 try {
@@ -40,7 +40,9 @@ try {
     $totalProcessed = 0
     $permissionsFound = 0
     
-##region Build ENTRA ROLE lookup table
+    # ===========================================
+    # STEP 1: Build ENTRA ROLE lookup table
+    # ===========================================
     Write-Host "Building Entra role lookup table..."
     $userEntraRoles = @{}  # userId -> array of role assignments
     
@@ -166,8 +168,10 @@ try {
     }
     
     Write-Host "Entra role lookup table built with $($userEntraRoles.Count) entries"
-#endregion    
-#region Build GRAPH PERMISSIONS lookup table
+    
+    # ===========================================
+    # STEP 2: Build GRAPH PERMISSIONS lookup table
+    # ===========================================
     Write-Host "Building Graph permissions lookup table..."
     $userGraphPermissions = @{}  # userId -> array of graph permissions
     $spCache = @{}  # Service principal cache
@@ -230,8 +234,10 @@ try {
     }
     
     Write-Host "Graph permissions lookup table built with $($userGraphPermissions.Count) users"
-#endregion
-##region Process users and combine permissions
+    
+    # ===========================================
+    # STEP 3: Process users and combine permissions
+    # ===========================================
     Write-Host "Processing users in batches..."
     $batchSize = $config.EntraID.BatchSize
     $batchNumber = 0
@@ -269,7 +275,9 @@ try {
             foreach ($user in $users) {
                 $userHasAnyPermissions = $false
                 
-#region OUTPUT ENTRA ROLES
+                # ===========================================
+                # OUTPUT ENTRA ROLES
+                # ===========================================
                 $userEntraRoleList = @()
                 
                 # Check direct user roles (by userId)
@@ -286,8 +294,9 @@ try {
                 # Write Entra role assignments
                 if ($userEntraRoleList.Count -gt 0) {
                     foreach ($role in $userEntraRoleList) {
-                        $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `
+                        $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
                             $user.userPrincipalName,
+                            $user.id,
                             $role.RoleName,
                             $role.AssignmentType,
                             "",
@@ -301,12 +310,15 @@ try {
                         $userHasAnyPermissions = $true
                     }
                 }
-                #emdregion
-#region OUTPUT GRAPH DELEGATED PERMISSIONS
+                
+                # ===========================================
+                # OUTPUT GRAPH DELEGATED PERMISSIONS
+                # ===========================================
                 if ($userGraphPermissions.ContainsKey($user.id)) {
                     foreach ($permission in $userGraphPermissions[$user.id]) {
-                        $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `
+                        $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
                             $user.userPrincipalName,
+                            $user.id,
                             "",
                             "",
                             $permission.PermissionType,
@@ -321,9 +333,10 @@ try {
                         $userHasAnyPermissions = $true
                     }
                 }
-#endregion
-#region OUTPUT GRAPH APPLICATION PERMISSIONS (per user)
-
+                
+                # ===========================================
+                # OUTPUT GRAPH APPLICATION PERMISSIONS (per user)
+                # ===========================================
                 try {
                     $appRoleAssignments = Invoke-GraphWithRetry `
                         -Uri "https://graph.microsoft.com/v1.0/users/$($user.id)/appRoleAssignments" `
@@ -354,8 +367,9 @@ try {
                             $appRole = $spInfo.AppRoles | Where-Object { $_.Id -eq $assignment.appRoleId }
                             
                             if ($appRole) {
-                                $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `
+                                $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
                                     $user.userPrincipalName,
+                                    $user.id,
                                     "",
                                     "",
                                     "Application",
@@ -375,11 +389,12 @@ try {
                 catch {
                     # Error getting app role assignments for this user - continue
                 }
-#endregion
+                
                 # If user has NO permissions at all, add empty entry
                 if (-not $userHasAnyPermissions) {
-                    $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `
+                    $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
                         $user.userPrincipalName,
+                        $user.id,
                         "",
                         "",
                         "",

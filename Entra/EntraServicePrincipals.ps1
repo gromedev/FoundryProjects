@@ -16,7 +16,7 @@
 param()
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
 
 # Get configuration
 $config = Get-Config
@@ -33,7 +33,7 @@ $tempPathNames = Join-Path $config.Paths.Temp "EntraServicePrincipals-Names_$tim
 $tempPathTags = Join-Path $config.Paths.Temp "EntraServicePrincipals-Tags_$timestamp.csv"
 
 # Initialize CSV with headers
-$csvHeaderBasic = "`"displayName`",`"Id`",`"accountEnabled`",`"appDescription`",`"appId`",`"appRoleAssignmentRequired`",`"deletedDateTime`",`"description`",`"preferredSingleSignOnMode`",`"servicePrincipalType`""
+$csvHeaderBasic = "`"ServicePrincipalId`",`"ServicePrincipalName`",`"accountEnabled`",`"appDescription`",`"appId`",`"appRoleAssignmentRequired`",`"deletedDateTime`",`"description`",`"preferredSingleSignOnMode`",`"servicePrincipalType`""
 Set-Content -Path $tempPathBasic -Value $csvHeaderBasic -Encoding UTF8
 
 $csvHeaderOAuth2 = "`"ServicePrincipalId`",`"ServicePrincipalName`",`"OAuth2PermissionScope`""
@@ -160,8 +160,8 @@ try {
                     # BASIC DATA (without multi-value fields)
                     # ===========================================
                     $lineBasic = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
-                        (($sp.displayName ?? "") -replace '"', '""'),
                         ($sp.id ?? ""),
+                        (($sp.displayName ?? "") -replace '"', '""'),
                         ($sp.StandardAccountEnabled ?? ""),
                         $cleanNotes,
                         ($sp.appId ?? ""),
