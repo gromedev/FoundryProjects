@@ -28,7 +28,7 @@
 
 $script:Config = @{
     Modules = @{
-        BasePath = "Modules"
+        #BasePath = "Modules"
         Common = "Common.Functions.psm1"
     }
     Paths = @{
