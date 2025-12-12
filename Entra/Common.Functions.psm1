@@ -64,6 +64,7 @@ $script:Config = @{
         MemoryCheckInterval = 50000
     }
 }
+#### WHY CANT THIS AND CONFIG BE COMBINED???
 function Get-Config {
     <#
     .SYNOPSIS
