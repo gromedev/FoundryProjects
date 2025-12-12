@@ -406,15 +406,15 @@ Export-ModuleMember -Function @(
     'Get-Config',
     'Set-ConfigValue',
     'Initialize-DataPaths',
-    'Move-ProcessedCSV',
-    'Test-MemoryPressure',
-    'Write-BufferToFile',
-    'Save-Progress',
-    'Get-Progress',
-    'Convert-ToStandardDateTime',
     'Connect-ToGraph',
     'Invoke-GraphWithRetry',
     'Get-GraphBatch',
     'Invoke-GraphRequestWithPaging',
     'Get-InitialUserQuery'
+    'Move-ProcessedCSV',
+    'Test-MemoryPressure',
+    'Write-BufferToFile',
+    'Save-Progress',
+    'Get-Progress',
+    'Convert-ToStandardDateTime'
 )
