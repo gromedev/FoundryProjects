@@ -5,6 +5,23 @@
 #>
 
 function Get-Config {
+<#
+.SYNOPSIS
+Returns the module configuration, initialized once. Adjust values as required:
+TenantId, ClientId, and CertificateThumbprint define the Entra ID authentication
+context
+BatchSize, ParallelThrottle, and RateLimitDelayMs control API
+throughput
+RetryAttempts and RetryDelaySeconds define fault-handling behavior
+MemoryThresholdGB and MemoryWarningThresholdGB set operational safety limits
+TargetGroup and ScopeToGroup govern scoping
+SizeThresholdPercent and DateFormat
+control file-management behavior
+UniqueUsers, UniqueGroups, UniqueRoles, and
+UniqueApplications set hashtable capacity expectations
+MemoryCheckInterval
+defines how often memory usage is inspected
+>#
     if (-not $script:Config) {
         $script:Config = @{
             Modules = @{
