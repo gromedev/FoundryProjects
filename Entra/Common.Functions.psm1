@@ -10,7 +10,7 @@ function Get-Config {
 Returns the module configuration, initialized once. Adjust values as required:
 - Modules, Common: Do not change.
 - Paths: Do not change.
-- TenantId, ClientId, CertificateThumbprint define the Entra ID authentication context.
+- TenantId, ClientId, CertificateThumbprint: define the Entra ID authentication context.
 - BatchSize, ParallelThrottle, RateLimitDelayMs: control API throughput.
 - RetryAttempts, RetryDelaySeconds: define fault-handling behavior.
 - MemoryThresholdGB, MemoryWarningThresholdGB: set memory safety limits.
