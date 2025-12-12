@@ -18,7 +18,7 @@ throughput.
 - SizeThresholdPercent, DateFormat: control file-management behavior.
 - UniqueUsers, UniqueGroups, UniqueRoles, UniqueApplications: set hashtable capacity expectations.
 - MemoryCheckInterval: defines how often memory usage is inspected.
->#
+#>
     if (-not $script:Config) {
         $script:Config = @{
             Modules = @{
