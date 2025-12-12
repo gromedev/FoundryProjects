@@ -16,7 +16,7 @@
 param()
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
 
 # Get configuration
 $config = Get-Config

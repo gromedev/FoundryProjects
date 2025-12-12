@@ -4,17 +4,18 @@
     Collects Entra ID user data AND group memberships in a single pass
 .DESCRIPTION
     Combined script that collects both basic user data and group memberships
-    Outputs THREE separate CSV files from a single user iteration:
+    Outputs FOUR separate CSV files from a single user iteration:
     1. EntraUsers-BasicData - Core user info (one row per user)
     2. EntraUsers-Licenses - User licenses (one row per license)
-    3. EntraUsers-Groups - User group memberships (one row per group)
+    3. EntraUsers-PasswordPolicies - Password policies (one row per policy)
+    4. EntraUsers-Groups - User group memberships (one row per group)
 #>
 
 [CmdletBinding()]
 param()
 
 # Import modules
-Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Modules\Common.Functions.psm1")) -Force
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
 
 # Get configuration
 $config = Get-Config
@@ -22,18 +23,22 @@ Initialize-DataPaths -Config $config
 
 Write-Host $PSScriptRoot
 
-# Setup paths for THREE outputs
+# Setup paths for FOUR outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
 $tempPathUsers = Join-Path $config.Paths.Temp "EntraUsers-BasicData_$timestamp.csv"
 $tempPathLicenses = Join-Path $config.Paths.Temp "EntraUsers-Licenses_$timestamp.csv"
+$tempPathPasswordPolicies = Join-Path $config.Paths.Temp "EntraUsers-PasswordPolicies_$timestamp.csv"
 $tempPathGroups = Join-Path $config.Paths.Temp "EntraUsers-Groups_$timestamp.csv"
 
 # Initialize CSV headers
-$csvHeaderUsers = "`"UserPrincipalName`",`"Id`",`"accountEnabled`",`"UserType`",`"CustomSecurityAttributes`",`"createdDateTime`",`"LastSignInDateTime`",`"OnPremisesSyncEnabled`",`"OnPremisesSamAccountName`",`"PasswordPolicies`""
+$csvHeaderUsers = "`"UserPrincipalName`",`"Id`",`"accountEnabled`",`"UserType`",`"CustomSecurityAttributes`",`"createdDateTime`",`"LastSignInDateTime`",`"OnPremisesSyncEnabled`",`"OnPremisesSamAccountName`""
 Set-Content -Path $tempPathUsers -Value $csvHeaderUsers -Encoding UTF8
 
 $csvHeaderLicenses = "`"UserPrincipalName`",`"UserId`",`"License`""
 Set-Content -Path $tempPathLicenses -Value $csvHeaderLicenses -Encoding UTF8
+
+$csvHeaderPasswordPolicies = "`"UserPrincipalName`",`"UserId`",`"PasswordPolicy`""
+Set-Content -Path $tempPathPasswordPolicies -Value $csvHeaderPasswordPolicies -Encoding UTF8
 
 $csvHeaderGroups = "`"UserPrincipalName`",`"GroupId`",`"GroupName`",`"GroupRoleAssignable`",`"GroupType`",`"GroupMembershipType`",`"GroupSecurityEnabled`",`"MembershipPath`""
 Set-Content -Path $tempPathGroups -Value $csvHeaderGroups -Encoding UTF8
@@ -41,6 +46,7 @@ Set-Content -Path $tempPathGroups -Value $csvHeaderGroups -Encoding UTF8
 # Initialize mutexes for thread-safe file writing (one per file)
 $mutexUsers = [System.Threading.Mutex]::new($false, "EntraUsersCSVMutex")
 $mutexLicenses = [System.Threading.Mutex]::new($false, "EntraLicensesCSVMutex")
+$mutexPasswordPolicies = [System.Threading.Mutex]::new($false, "EntraPasswordPoliciesCSVMutex")
 $mutexGroups = [System.Threading.Mutex]::new($false, "EntraGroupsCSVMutex")
 
 try {
@@ -113,9 +119,10 @@ try {
                 )
             }
             
-            # Process users in parallel - collect user data, licenses, AND group memberships
+            # Process users in parallel - collect user data, licenses, password policies, AND group memberships
             $batchResultsUsers = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             $batchResultsLicenses = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            $batchResultsPasswordPolicies = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             $batchResultsGroups = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
             
             $users | ForEach-Object -ThrottleLimit $config.EntraID.ParallelThrottle -Parallel {
@@ -125,6 +132,7 @@ try {
                 $user = $_
                 $localBatchResultsUsers = $using:batchResultsUsers
                 $localBatchResultsLicenses = $using:batchResultsLicenses
+                $localBatchResultsPasswordPolicies = $using:batchResultsPasswordPolicies
                 $localBatchResultsGroups = $using:batchResultsGroups
                 $localSkuLookup = $using:skuLookup
                 $localConfig = $using:config
@@ -141,17 +149,12 @@ try {
                         $user.customSecurityAttributes | ConvertTo-Json -Compress
                     } else { "" }
                     
-                    # Handle password policies
-                    $passwordPolicies = if ($user.passwordPolicies) {
-                        $user.passwordPolicies
-                    } else { "" }
-                    
                     # Use pre-converted values
                     $createdDateTime = if ($user.StandardCreatedDateTime) { $user.StandardCreatedDateTime } else { "" }
                     $lastSignInDateTime = if ($user.StandardLastSignInDateTime) { $user.StandardLastSignInDateTime } else { "" }
                     
-                    # Build user data line (without licenses)
-                    $lineUser = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
+                    # Build user data line (without licenses and password policies)
+                    $lineUser = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`"" -f `
                         ($user.userPrincipalName ?? ""),
                         ($user.id ?? ""),
                         ($user.StandardAccountEnabled ?? ""),
@@ -160,8 +163,7 @@ try {
                         $createdDateTime,
                         $lastSignInDateTime,
                         ($user.StandardOnPremisesSyncEnabled ?? ""),
-                        ($user.onPremisesSamAccountName ?? ""),
-                        $passwordPolicies
+                        ($user.onPremisesSamAccountName ?? "")
                     
                     $localBatchResultsUsers.Add($lineUser)
                     
@@ -184,7 +186,25 @@ try {
                     }
                     
                     # ===========================================
-                    # PART 3: USER GROUP MEMBERSHIPS
+                    # PART 3: USER PASSWORD POLICIES (separate CSV)
+                    # ===========================================
+                    
+                    if ($user.passwordPolicies) {
+                        # Split by comma (Graph API returns comma-separated string)
+                        $policies = $user.passwordPolicies -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+                        
+                        foreach ($policy in $policies) {
+                            $linePolicy = "`"{0}`",`"{1}`",`"{2}`"" -f `
+                                $user.userPrincipalName,
+                                $user.id,
+                                $policy
+                            
+                            $localBatchResultsPasswordPolicies.Add($linePolicy)
+                        }
+                    }
+                    
+                    # ===========================================
+                    # PART 4: USER GROUP MEMBERSHIPS
                     # ===========================================
                     
                     # Get user's direct group memberships
@@ -275,7 +295,7 @@ try {
                 }
             }
             
-            # Write ALL THREE batches to their respective files (thread-safe)
+            # Write ALL FOUR batches to their respective files (thread-safe)
             if ($batchResultsUsers.Count -gt 0) {
                 try {
                     $mutexUsers.WaitOne() | Out-Null
@@ -296,6 +316,16 @@ try {
                 }
             }
             
+            if ($batchResultsPasswordPolicies.Count -gt 0) {
+                try {
+                    $mutexPasswordPolicies.WaitOne() | Out-Null
+                    $batchResultsPasswordPolicies | Add-Content -Path $tempPathPasswordPolicies -Encoding UTF8
+                }
+                finally {
+                    $mutexPasswordPolicies.ReleaseMutex()
+                }
+            }
+            
             if ($batchResultsGroups.Count -gt 0) {
                 try {
                     $mutexGroups.WaitOne() | Out-Null
@@ -313,9 +343,10 @@ try {
     
     Write-Host "Processing complete. Total users processed: $totalProcessed" -ForegroundColor Green
     
-    # Move ALL THREE files to final location
+    # Move ALL FOUR files to final location
     Move-ProcessedCSV -SourcePath $tempPathUsers -FinalFileName "EntraUsers-BasicData_$timestamp.csv" -Config $config
     Move-ProcessedCSV -SourcePath $tempPathLicenses -FinalFileName "EntraUsers-Licenses_$timestamp.csv" -Config $config
+    Move-ProcessedCSV -SourcePath $tempPathPasswordPolicies -FinalFileName "EntraUsers-PasswordPolicies_$timestamp.csv" -Config $config
     Move-ProcessedCSV -SourcePath $tempPathGroups -FinalFileName "EntraUsers-Groups_$timestamp.csv" -Config $config
 }
 catch {
@@ -325,6 +356,7 @@ catch {
 finally {
     if ($mutexUsers) { $mutexUsers.Dispose() }
     if ($mutexLicenses) { $mutexLicenses.Dispose() }
+    if ($mutexPasswordPolicies) { $mutexPasswordPolicies.Dispose() }
     if ($mutexGroups) { $mutexGroups.Dispose() }
     if ($script:groupCache) {
         $script:groupCache.Clear()

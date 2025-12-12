@@ -32,8 +32,8 @@ $script:Config = @{
         Common = "Common.Functions.psm1"
     }
     Paths = @{
-        CSV = "Import\CSVs"
-        Temp = "Import\temp"
+        CSV = Join-Path $PSScriptRoot "Import\CSVs"
+        Temp = Join-Path $PSScriptRoot "Import\temp"
     }
     EntraID = @{
         TenantId = "thomasmartingrome.onmicrosoft.com"
@@ -363,26 +363,6 @@ function Get-GraphBatch {
         Items = $response.value
         NextLink = $response.'@odata.nextLink'
     }
-}
-function Invoke-GraphRequestWithPaging {
-<#
-    .SYNOPSIS
-        Retrieves all pages of results from a Graph API endpoint
-#>
-    param (
-        [string]$Uri,
-        [object]$Config
-    )
-    $results = [System.Collections.ArrayList]::new()
-    $currentUri = $Uri
-    do {
-        $response = Invoke-GraphWithRetry -Uri $currentUri -Config $Config
-        if ($response.value) {
-            [void]$results.AddRange($response.value)
-        }
-        $currentUri = $response.'@odata.nextLink'
-    } while ($currentUri)
-    return $results
 }
 function Get-InitialUserQuery {
     <#
