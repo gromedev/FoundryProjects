@@ -49,9 +49,6 @@ $script:Config = @{
         TargetGroup = $null
         ScopeToGroup = $false
     }
-    ActiveDirectory = @{
-        BufferLimit = 1000
-    }
     FileManagement = @{
         SizeThresholdPercent = 20
         DateFormat = "yyyyMMdd_HHmmss"
