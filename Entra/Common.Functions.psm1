@@ -8,6 +8,8 @@ function Get-Config {
 <#
 .SYNOPSIS
 Returns the module configuration, initialized once. Adjust values as required:
+- Modules, Common: Do not change.
+- Paths: Do not change.
 - TenantId, ClientId, CertificateThumbprint define the Entra ID authentication
 context.
 - BatchSize, ParallelThrottle, RateLimitDelayMs: control API
