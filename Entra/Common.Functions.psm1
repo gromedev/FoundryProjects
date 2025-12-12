@@ -54,7 +54,7 @@ $script:Config = @{
         DateFormat = "yyyyMMdd_HHmmss"
     }
     Metrics = @{
-        StaleAccountThresholdDays = 90
+        #StaleAccountThresholdDays = 90
         HashTableLimits = @{
             UniqueUsers = 500000
             UniqueGroups = 5000000
