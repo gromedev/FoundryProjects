@@ -33,8 +33,6 @@ Set-Content -Path $tempPathTypes -Value $csvHeaderTypes -Encoding UTF8
 $csvHeaderTags = "`"GroupId`",`"GroupName`",`"Tag`""
 Set-Content -Path $tempPathTags -Value $csvHeaderTags -Encoding UTF8
 
-Write-Verbose "CSV Headers created"
-
 # Proper CSV escaping function with explicit empty quotes for nulls
 function ConvertTo-SafeCSV {
     param([string]$Value)
@@ -69,7 +67,6 @@ try {
     
     $nextLink = "https://graph.microsoft.com/beta/groups?`$select=$selectFields&`$top=$batchSize"
     
-    Write-Verbose "Using BETA endpoint for reliable isAssignableToRole values"
     Write-Verbose "Starting cloud-only groups collection..."
     
     while ($nextLink) {
@@ -167,9 +164,9 @@ try {
                     
                     $localBatchResultsBasic.Add($lineBasic)
                     
-                    # ===========================================
-                    # GROUP TYPES (separate CSV)
-                    # ===========================================
+
+                    # GROUP TYPES
+
                     if ($group.groupTypes -and $group.groupTypes.Count -gt 0) {
                         foreach ($groupType in $group.groupTypes) {
                             $lineType = "`"{0}`",`"{1}`",`"{2}`"" -f `
@@ -180,10 +177,7 @@ try {
                             $localBatchResultsTypes.Add($lineType)
                         }
                     }
-                    
-                    # ===========================================
-                    # GROUP TAGS (separate CSV)
-                    # ===========================================
+                    # GROUP TAGS
                     if ($group.tags -and $group.tags.Count -gt 0) {
                         foreach ($tag in $group.tags) {
                             $lineTag = "`"{0}`",`"{1}`",`"{2}`"" -f `

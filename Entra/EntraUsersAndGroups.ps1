@@ -160,9 +160,9 @@ try {
                     
                     $localBatchResultsUsers.Add($lineUser)
                     
-                    # ===========================================
-                    # PART 2: USER LICENSES (separate CSV)
-                    # ===========================================
+
+                    # PART 2: USER LICENSES
+
                     
                     if ($user.assignedLicenses -and $user.assignedLicenses.Count -gt 0) {
                         foreach ($license in $user.assignedLicenses) {
@@ -178,9 +178,9 @@ try {
                         }
                     }
                     
-                    # ===========================================
-                    # PART 3: USER PASSWORD POLICIES (separate CSV)
-                    # ===========================================
+
+                    # PART 3: USER PASSWORD POLICIES
+
                     
                     if ($user.passwordPolicies) {
                         # Split by comma (Graph API returns comma-separated string)
