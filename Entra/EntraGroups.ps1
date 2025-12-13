@@ -33,8 +33,11 @@ Set-Content -Path $tempPathTypes -Value $csvHeaderTypes -Encoding UTF8
 $csvHeaderTags = "`"GroupId`",`"GroupName`",`"Tag`""
 Set-Content -Path $tempPathTags -Value $csvHeaderTags -Encoding UTF8
 
-# Proper CSV escaping function with explicit empty quotes for nulls
 function ConvertTo-SafeCSV {
+    <#
+    .SYNOPSIS
+        CSV escaping function with explicit empty quotes for nulls
+    #>
     param([string]$Value)
     
     if ([string]::IsNullOrEmpty($Value)) {
