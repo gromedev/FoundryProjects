@@ -14,13 +14,11 @@ param(
     [string]$TestUser = $null  # Optional: specify a user to test with
 )
 
-# Import modules
-Import-Module (Join-Path $PSScriptRoot "Common.Functions.psm1") -Force
-
-# Get configuration
+# Configuration
+Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
 $config = Get-Config
 
-# Setup paths
+# Setup paths for outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
 $tempPath = Join-Path $config.Paths.Temp "EntraUsers-AllPermissions_$timestamp.csv"
 

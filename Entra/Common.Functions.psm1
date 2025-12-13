@@ -1,9 +1,4 @@
 #Requires -Version 7.0
-<#
-.SYNOPSIS
-    Common functions for data collection
-#>
-
 function Get-Config {
     <#
     .SYNOPSIS
