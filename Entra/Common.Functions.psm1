@@ -63,7 +63,6 @@ function Get-Config {
     }
     return $config
 }
-
 function Connect-ToGraph {
     <#
     .SYNOPSIS
@@ -211,64 +210,7 @@ function Write-BufferToFile {
         $Buffer.Clear()
     }
 }
-function Move-ProcessedCSV {
-    <#
-    .SYNOPSIS
-        Moves completed CSV to final location with size validation
-    .DESCRIPTION
-        Validates file size against existing files, creates backups,
-        and moves to error folder if size difference exceeds threshold
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [string]$SourcePath,
-        
-        [Parameter(Mandatory)]
-        [string]$FinalFileName,
-        
-        [Parameter(Mandatory)]
-        [object]$Config
-    )
-    
-    if (-not (Test-Path $SourcePath)) {
-        return
-    }
-    
-    $finalPath = Join-Path $Config.Paths.CSV $FinalFileName
-    $sourceSize = (Get-Item $SourcePath).Length
-    
-    # Check existing file
-    if (Test-Path $finalPath) {
-        $existingSize = (Get-Item $finalPath).Length
-        $sizeDiffPercent = [Math]::Abs(($sourceSize - $existingSize) / $existingSize * 100)
-        
-        if ($sizeDiffPercent -gt $Config.FileManagement.SizeThresholdPercent) {
-            # Move to error folder
-            $errorPath = Join-Path $Config.Paths.Error "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat)_SizeMismatch.csv"
-            Move-Item -Path $SourcePath -Destination $errorPath -Force
-            
-            $logContent = @"
-Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Error: Size Mismatch
-Size Difference: $([Math]::Round($sizeDiffPercent, 1))%
-Source Size: $sourceSize bytes
-Existing Size: $existingSize bytes
-"@
-            Set-Content -Path "$errorPath.log" -Value $logContent
-            
-            Write-Warning "File size difference ($([Math]::Round($sizeDiffPercent, 1))%) exceeds threshold. File moved to: $errorPath"
-            return
-        }
-        
-        # Backup existing
-        $backupPath = Join-Path $Config.Paths.Backup "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat).csv"
-        Copy-Item -Path $finalPath -Destination $backupPath -Force
-    }
-    
-    # Move to final location
-    Move-Item -Path $SourcePath -Destination $finalPath -Force
-    Write-Verbose "CSV saved to: $finalPath"
-}
+
 function Save-Progress {
     <#
     .SYNOPSIS
@@ -336,6 +278,64 @@ function Convert-ToStandardDateTime {
         return ""
     }
 }
+function Move-ProcessedCSV {
+    <#
+    .SYNOPSIS
+        Moves completed CSV to final location with size validation
+    .DESCRIPTION
+        Validates file size against existing files, creates backups,
+        and moves to error folder if size difference exceeds threshold
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$SourcePath,
+        
+        [Parameter(Mandatory)]
+        [string]$FinalFileName,
+        
+        [Parameter(Mandatory)]
+        [object]$Config
+    )
+    
+    if (-not (Test-Path $SourcePath)) {
+        return
+    }
+    
+    $finalPath = Join-Path $Config.Paths.CSV $FinalFileName
+    $sourceSize = (Get-Item $SourcePath).Length
+    
+    # Check existing file
+    if (Test-Path $finalPath) {
+        $existingSize = (Get-Item $finalPath).Length
+        $sizeDiffPercent = [Math]::Abs(($sourceSize - $existingSize) / $existingSize * 100)
+        
+        if ($sizeDiffPercent -gt $Config.FileManagement.SizeThresholdPercent) {
+            # Move to error folder
+            $errorPath = Join-Path $Config.Paths.Error "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat)_SizeMismatch.csv"
+            Move-Item -Path $SourcePath -Destination $errorPath -Force
+            
+            $logContent = @"
+Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Error: Size Mismatch
+Size Difference: $([Math]::Round($sizeDiffPercent, 1))%
+Source Size: $sourceSize bytes
+Existing Size: $existingSize bytes
+"@
+            Set-Content -Path "$errorPath.log" -Value $logContent
+            
+            Write-Warning "File size difference ($([Math]::Round($sizeDiffPercent, 1))%) exceeds threshold. File moved to: $errorPath"
+            return
+        }
+        
+        # Backup existing
+        $backupPath = Join-Path $Config.Paths.Backup "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat).csv"
+        Copy-Item -Path $finalPath -Destination $backupPath -Force
+    }
+    
+    # Move to final location
+    Move-Item -Path $SourcePath -Destination $finalPath -Force
+    Write-Verbose "CSV saved to: $finalPath"
+}
 function Get-InitialUserQuery {
     <#
     .SYNOPSIS
@@ -376,17 +376,15 @@ function Get-InitialUserQuery {
 }
 Export-ModuleMember -Function @(
     'Get-Config',
-    'Set-ConfigValue',
-    'Initialize-DataPaths',
     'Connect-ToGraph',
     'Invoke-GraphWithRetry',
     'Get-GraphBatch',
     'Invoke-GraphRequestWithPaging',
-    'Get-InitialUserQuery'
-    'Move-ProcessedCSV',
     'Test-MemoryPressure',
     'Write-BufferToFile',
     'Save-Progress',
     'Get-Progress',
-    'Convert-ToStandardDateTime'
+    'Convert-ToStandardDateTime',
+    'Move-ProcessedCSV',
+    'Get-InitialUserQuery'
 )
