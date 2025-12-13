@@ -41,12 +41,12 @@ function ConvertTo-SafeCSV {
         return '""'
     }
     
-    # Remove dangerous characters that break CSV structure
+    # Remove characters that break CSV structure
     $cleanValue = $Value -replace "`r`n", " " -replace "`n", " " -replace "`r", " " -replace "`t", " "
     $cleanValue = $cleanValue -replace '\s+', ' '  # Collapse multiple spaces
     $cleanValue = $cleanValue.Trim()
     
-    # CRITICAL: Escape double quotes for CSV
+    # Escape double quotes for CSV
     $cleanValue = $cleanValue -replace '"', '""'
     
     # Return with quotes
@@ -192,7 +192,7 @@ try {
             if ($batchResultsBasic.Count -gt 0) {
                 $batchResultsBasic | Add-Content -Path $tempPathBasic -Encoding UTF8
             }
-            
+
             if ($batchResultsTypes.Count -gt 0) {
                 $batchResultsTypes | Add-Content -Path $tempPathTypes -Encoding UTF8
             }
