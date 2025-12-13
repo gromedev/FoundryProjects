@@ -61,10 +61,8 @@ try {
     $batchSize = $config.EntraID.BatchSize
     $totalProcessed = 0
     $batchNumber = 0
-    
-    # Use BETA endpoint for reliable isAssignableToRole values
-    $selectFields = "displayName,id,classification,deletedDateTime,description,groupTypes,mailEnabled,membershipRule,securityEnabled,isAssignableToRole,onPremisesSyncEnabled,tags"
-    
+
+    $selectFields = "displayName,id,classification,deletedDateTime,description,groupTypes,mailEnabled,membershipRule,securityEnabled,isAssignableToRole,onPremisesSyncEnabled,tags"   
     $nextLink = "https://graph.microsoft.com/beta/groups?`$select=$selectFields&`$top=$batchSize"
     
     Write-Verbose "Starting cloud-only groups collection..."
@@ -73,11 +71,10 @@ try {
         $batchNumber++
         Write-Verbose "Processing batch $batchNumber..."
         
-        # Check memory only every 10 batches
+        # Check memory every 10 batches
         if ($batchNumber % 10 -eq 0) {
             if (Test-MemoryPressure -ThresholdGB $config.EntraID.MemoryThresholdGB `
                                     -WarningGB $config.EntraID.MemoryWarningThresholdGB) {
-                # Memory cleanup handled in function
             }
         }
         
@@ -144,7 +141,7 @@ try {
                     # Use pre-converted date values
                     $deletedDateTime = ConvertTo-SafeCSV -Value ($group.StandardDeletedDateTime ?? "")
                     
-                    # Properly escape ALL text fields
+                    # Properly escape text fields
                     $displayName = ConvertTo-SafeCSV -Value ($group.displayName ?? "")
                     $classification = ConvertTo-SafeCSV -Value ($group.classification ?? "")
                     $description = ConvertTo-SafeCSV -Value ($group.description ?? "")
@@ -163,10 +160,7 @@ try {
                         (ConvertTo-SafeCSV -Value ($group.StandardIsAssignableToRole ?? ""))
                     
                     $localBatchResultsBasic.Add($lineBasic)
-                    
-
                     # GROUP TYPES
-
                     if ($group.groupTypes -and $group.groupTypes.Count -gt 0) {
                         foreach ($groupType in $group.groupTypes) {
                             $lineType = "`"{0}`",`"{1}`",`"{2}`"" -f `
@@ -214,7 +208,7 @@ try {
     
     Write-Verbose "Processing complete. Total cloud-only groups processed: $totalProcessed"
     
-    # Move ALL THREE files to final location
+    # Move files to final location
     Move-ProcessedCSV -SourcePath $tempPathBasic -FinalFileName "EntraGroups-BasicData_$timestamp.csv" -Config $config
     Move-ProcessedCSV -SourcePath $tempPathTypes -FinalFileName "EntraGroups-Types_$timestamp.csv" -Config $config
     Move-ProcessedCSV -SourcePath $tempPathTags -FinalFileName "EntraGroups-Tags_$timestamp.csv" -Config $config
