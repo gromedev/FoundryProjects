@@ -5,20 +5,20 @@
 #>
 
 function Get-Config {
-<#
-.SYNOPSIS
-Returns the module configuration, initialized once. Adjust values as required:
-- Modules, Common: Do not change.
-- Paths: Do not change.
-- TenantId, ClientId, CertificateThumbprint: define the Entra ID authentication context.
-- BatchSize, ParallelThrottle, RateLimitDelayMs: control API throughput.
-- RetryAttempts, RetryDelaySeconds: define fault-handling behavior.
-- MemoryThresholdGB, MemoryWarningThresholdGB: set memory safety limits.
-- TargetGroup, ScopeToGroup: govern scoping (optional).
-- SizeThresholdPercent, DateFormat: control file-management behavior.
-- UniqueUsers, UniqueGroups, UniqueRoles, UniqueApplications: set hashtable capacity expectations.
-- MemoryCheckInterval: defines how often memory usage is inspected.
-#>
+    <#
+    .SYNOPSIS
+    Returns the module configuration, initialized once. Adjust values as required:
+    - Modules, Common: Do not change.
+    - Paths: Do not change.
+    - TenantId, ClientId, CertificateThumbprint: define the Entra ID authentication context.
+    - BatchSize, ParallelThrottle, RateLimitDelayMs: control API throughput.
+    - RetryAttempts, RetryDelaySeconds: define fault-handling behavior.
+    - MemoryThresholdGB, MemoryWarningThresholdGB: set memory safety limits.
+    - TargetGroup, ScopeToGroup: govern scoping (optional).
+    - SizeThresholdPercent, DateFormat: control file-management behavior.
+    - UniqueUsers, UniqueGroups, UniqueRoles, UniqueApplications: set hashtable capacity expectations.
+    - MemoryCheckInterval: defines how often memory usage is inspected.
+    #>
     if (-not $script:Config) {
         $script:Config = @{
             Modules = @{
@@ -57,195 +57,18 @@ Returns the module configuration, initialized once. Adjust values as required:
             }
         }
     }
+    $config = $script:Config
 
-    $script:Config
-}
-function Initialize-DataPaths {
-    <#
-    .SYNOPSIS
-        Creates all required directories if they don't exist
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [object]$Config
-    )
-    
-    foreach ($pathKey in $Config.Paths.Keys) {
-        $path = $Config.Paths[$pathKey]
+    # 2. Path Initialization (from the original Initialize-DataPaths)
+    foreach ($pathKey in $config.Paths.Keys) {
+        $path = $config.Paths[$pathKey]
         if (-not (Test-Path $path)) {
             New-Item -ItemType Directory -Path $path -Force | Out-Null
         }
     }
+    return $config
 }
-function Move-ProcessedCSV {
-    <#
-    .SYNOPSIS
-        Moves completed CSV to final location with size validation
-    .DESCRIPTION
-        Validates file size against existing files, creates backups,
-        and moves to error folder if size difference exceeds threshold
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [string]$SourcePath,
-        
-        [Parameter(Mandatory)]
-        [string]$FinalFileName,
-        
-        [Parameter(Mandatory)]
-        [object]$Config
-    )
-    
-    if (-not (Test-Path $SourcePath)) {
-        return
-    }
-    
-    $finalPath = Join-Path $Config.Paths.CSV $FinalFileName
-    $sourceSize = (Get-Item $SourcePath).Length
-    
-    # Check existing file
-    if (Test-Path $finalPath) {
-        $existingSize = (Get-Item $finalPath).Length
-        $sizeDiffPercent = [Math]::Abs(($sourceSize - $existingSize) / $existingSize * 100)
-        
-        if ($sizeDiffPercent -gt $Config.FileManagement.SizeThresholdPercent) {
-            # Move to error folder
-            $errorPath = Join-Path $Config.Paths.Error "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat)_SizeMismatch.csv"
-            Move-Item -Path $SourcePath -Destination $errorPath -Force
-            
-            $logContent = @"
-Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Error: Size Mismatch
-Size Difference: $([Math]::Round($sizeDiffPercent, 1))%
-Source Size: $sourceSize bytes
-Existing Size: $existingSize bytes
-"@
-            Set-Content -Path "$errorPath.log" -Value $logContent
-            
-            Write-Warning "File size difference ($([Math]::Round($sizeDiffPercent, 1))%) exceeds threshold. File moved to: $errorPath"
-            return
-        }
-        
-        # Backup existing
-        $backupPath = Join-Path $Config.Paths.Backup "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat).csv"
-        Copy-Item -Path $finalPath -Destination $backupPath -Force
-    }
-    
-    # Move to final location
-    Move-Item -Path $SourcePath -Destination $finalPath -Force
-    Write-Host "CSV saved to: $finalPath"
-}
-function Test-MemoryPressure {
-    <#
-    .SYNOPSIS
-        Checks current memory usage and triggers garbage collection if needed
-    #>
-    param (
-        [double]$ThresholdGB,
-        [double]$WarningGB
-    )
-    
-    $currentMemory = (Get-Process -Id $pid).WorkingSet64 / 1GB
-    
-    if ($currentMemory -gt $ThresholdGB) {
-        Write-Warning "Memory usage critical: $([Math]::Round($currentMemory, 2))GB"
-        [System.GC]::Collect()
-        [System.GC]::WaitForPendingFinalizers()
-        [System.GC]::Collect()
-        Start-Sleep -Seconds 2
-        return $true
-    }
-    elseif ($currentMemory -gt $WarningGB) {
-        Write-Warning "Memory usage high: $([Math]::Round($currentMemory, 2))GB"
-    }
-    
-    return $false
-}
-function Write-BufferToFile {
-    <#
-    .SYNOPSIS
-        Writes buffer contents to file and clears buffer
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [System.Collections.Generic.List[string]]$Buffer,
-        
-        [Parameter(Mandatory)]
-        [string]$FilePath
-    )
-    
-    if ($Buffer.Count -gt 0) {
-        $Buffer | Add-Content -Path $FilePath -Encoding UTF8
-        $Buffer.Clear()
-    }
-}
-function Save-Progress {
-    <#
-    .SYNOPSIS
-        Saves progress state to JSON file for resumable operations
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [hashtable]$Progress,
-        
-        [Parameter(Mandatory)]
-        [string]$ProgressFile
-    )
-    
-    $Progress | ConvertTo-Json -Depth 10 | Set-Content -Path $ProgressFile
-}
-function Get-Progress {
-    <#
-    .SYNOPSIS
-        Loads progress state from JSON file
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [string]$ProgressFile
-    )
-    
-    if (Test-Path $ProgressFile) {
-        Write-Host "Resuming from previous progress..."
-        return Get-Content $ProgressFile | ConvertFrom-Json -AsHashtable
-    }
-    
-    return $null
-}
-function Convert-ToStandardDateTime {
-    <#
-    .SYNOPSIS
-        Converts Graph API ISO 8601 datetime to standard format
-    .DESCRIPTION
-        SIMPLIFIED VERSION - Only supports Graph API format (ISO 8601)
-        Returns format: yyyy-MM-dd HH:mm:ss
-    .EXAMPLE
-        Convert-ToStandardDateTime -DateValue "2024-03-15T10:30:00Z"
-        Returns: "2024-03-15 10:30:00"
-    #>
-    param (
-        [object]$DateValue,
-        [string]$SourceFormat = "GraphAPI"  # Kept for backward compatibility
-    )
-    
-    # Return empty string for null/empty values
-    if ($null -eq $DateValue -or $DateValue -eq '' -or $DateValue -eq 0) {
-        return ""
-    }
-    
-    try {
-        # Parse ISO 8601 format (Graph API standard)
-        $date = [DateTime]::Parse(
-            $DateValue, 
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [System.Globalization.DateTimeStyles]::RoundtripKind
-        )
-        return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
-    }
-    catch {
-        Write-Warning "Failed to convert date value '$DateValue': $_"
-        return ""
-    }
-}
+
 function Connect-ToGraph {
     <#
     .SYNOPSIS
@@ -349,6 +172,175 @@ function Get-GraphBatch {
         NextLink = $response.'@odata.nextLink'
     }
 }
+function Test-MemoryPressure {
+    <#
+    .SYNOPSIS
+        Checks current memory usage and triggers garbage collection if needed
+    #>
+    param (
+        [double]$ThresholdGB,
+        [double]$WarningGB
+    )
+    
+    $currentMemory = (Get-Process -Id $pid).WorkingSet64 / 1GB
+    
+    if ($currentMemory -gt $ThresholdGB) {
+        Write-Warning "Memory usage critical: $([Math]::Round($currentMemory, 2))GB"
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        [System.GC]::Collect()
+        Start-Sleep -Seconds 2
+        return $true
+    }
+    elseif ($currentMemory -gt $WarningGB) {
+        Write-Warning "Memory usage high: $([Math]::Round($currentMemory, 2))GB"
+    }
+    
+    return $false
+}
+function Write-BufferToFile {
+    <#
+    .SYNOPSIS
+        Writes buffer contents to file and clears buffer
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [System.Collections.Generic.List[string]]$Buffer,
+        
+        [Parameter(Mandatory)]
+        [string]$FilePath
+    )
+    
+    if ($Buffer.Count -gt 0) {
+        $Buffer | Add-Content -Path $FilePath -Encoding UTF8
+        $Buffer.Clear()
+    }
+}
+function Move-ProcessedCSV {
+    <#
+    .SYNOPSIS
+        Moves completed CSV to final location with size validation
+    .DESCRIPTION
+        Validates file size against existing files, creates backups,
+        and moves to error folder if size difference exceeds threshold
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$SourcePath,
+        
+        [Parameter(Mandatory)]
+        [string]$FinalFileName,
+        
+        [Parameter(Mandatory)]
+        [object]$Config
+    )
+    
+    if (-not (Test-Path $SourcePath)) {
+        return
+    }
+    
+    $finalPath = Join-Path $Config.Paths.CSV $FinalFileName
+    $sourceSize = (Get-Item $SourcePath).Length
+    
+    # Check existing file
+    if (Test-Path $finalPath) {
+        $existingSize = (Get-Item $finalPath).Length
+        $sizeDiffPercent = [Math]::Abs(($sourceSize - $existingSize) / $existingSize * 100)
+        
+        if ($sizeDiffPercent -gt $Config.FileManagement.SizeThresholdPercent) {
+            # Move to error folder
+            $errorPath = Join-Path $Config.Paths.Error "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat)_SizeMismatch.csv"
+            Move-Item -Path $SourcePath -Destination $errorPath -Force
+            
+            $logContent = @"
+Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Error: Size Mismatch
+Size Difference: $([Math]::Round($sizeDiffPercent, 1))%
+Source Size: $sourceSize bytes
+Existing Size: $existingSize bytes
+"@
+            Set-Content -Path "$errorPath.log" -Value $logContent
+            
+            Write-Warning "File size difference ($([Math]::Round($sizeDiffPercent, 1))%) exceeds threshold. File moved to: $errorPath"
+            return
+        }
+        
+        # Backup existing
+        $backupPath = Join-Path $Config.Paths.Backup "$FinalFileName`_$(Get-Date -Format $Config.FileManagement.DateFormat).csv"
+        Copy-Item -Path $finalPath -Destination $backupPath -Force
+    }
+    
+    # Move to final location
+    Move-Item -Path $SourcePath -Destination $finalPath -Force
+    Write-Host "CSV saved to: $finalPath"
+}
+function Save-Progress {
+    <#
+    .SYNOPSIS
+        Saves progress state to JSON file for resumable operations
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [hashtable]$Progress,
+        
+        [Parameter(Mandatory)]
+        [string]$ProgressFile
+    )
+    
+    $Progress | ConvertTo-Json -Depth 10 | Set-Content -Path $ProgressFile
+}
+function Get-Progress {
+    <#
+    .SYNOPSIS
+        Loads progress state from JSON file
+    #>
+    param (
+        [Parameter(Mandatory)]
+        [string]$ProgressFile
+    )
+    
+    if (Test-Path $ProgressFile) {
+        Write-Host "Resuming from previous progress..."
+        return Get-Content $ProgressFile | ConvertFrom-Json -AsHashtable
+    }
+    
+    return $null
+}
+function Convert-ToStandardDateTime {
+    <#
+    .SYNOPSIS
+        Converts Graph API ISO 8601 datetime to standard format
+    .DESCRIPTION
+        SIMPLIFIED VERSION - Only supports Graph API format (ISO 8601)
+        Returns format: yyyy-MM-dd HH:mm:ss
+    .EXAMPLE
+        Convert-ToStandardDateTime -DateValue "2024-03-15T10:30:00Z"
+        Returns: "2024-03-15 10:30:00"
+    #>
+    param (
+        [object]$DateValue,
+        [string]$SourceFormat = "GraphAPI"  # Kept for backward compatibility
+    )
+    
+    # Return empty string for null/empty values
+    if ($null -eq $DateValue -or $DateValue -eq '' -or $DateValue -eq 0) {
+        return ""
+    }
+    
+    try {
+        # Parse ISO 8601 format (Graph API standard)
+        $date = [DateTime]::Parse(
+            $DateValue, 
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind
+        )
+        return $date.ToString("yyyy-MM-dd HH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    catch {
+        Write-Warning "Failed to convert date value '$DateValue': $_"
+        return ""
+    }
+}
 function Get-InitialUserQuery {
     <#
     .SYNOPSIS
@@ -389,8 +381,6 @@ function Get-InitialUserQuery {
 }
 Export-ModuleMember -Function @(
     'Get-Config',
-    'Set-ConfigValue',
-    'Initialize-DataPaths',
     'Connect-ToGraph',
     'Invoke-GraphWithRetry',
     'Get-GraphBatch',

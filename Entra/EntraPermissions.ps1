@@ -19,7 +19,6 @@ Import-Module (Join-Path $PSScriptRoot "Common.Functions.psm1") -Force
 
 # Get configuration
 $config = Get-Config
-Initialize-DataPaths -Config $config
 
 # Setup paths
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
