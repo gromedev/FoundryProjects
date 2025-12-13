@@ -13,13 +13,11 @@ param(
     [string]$TestGroup = $null  # Optional: specify a group to test with
 )
 
-# Import modules
+# Configuration
 Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
-
-# Get configuration
 $config = Get-Config
 
-# Setup paths
+# Setup paths for outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
 $tempPath = Join-Path $config.Paths.Temp "EntraGroups-Relationships_$timestamp.csv"
 $progressFile = Join-Path $config.Paths.Temp "EntraGroups-Relationships_progress.json"

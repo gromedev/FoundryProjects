@@ -13,13 +13,11 @@
 [CmdletBinding()]
 param()
 
-# Import modules
+# Configuration
 Import-Module (Resolve-Path (Join-Path $PSScriptRoot "Common.Functions.psm1")) -Force
-
-# Get configuration
 $config = Get-Config
 
-# Setup paths for THREE outputs
+# Setup paths for outputs
 $timestamp = Get-Date -Format $config.FileManagement.DateFormat
 $tempPathBasic = Join-Path $config.Paths.Temp "EntraGroups-BasicData_$timestamp.csv"
 $tempPathTypes = Join-Path $config.Paths.Temp "EntraGroups-Types_$timestamp.csv"
