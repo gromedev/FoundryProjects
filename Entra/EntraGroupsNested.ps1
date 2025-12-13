@@ -30,11 +30,6 @@ if ($PSVersionTable.PSVersion.Major -ge 6) {
     Set-Content -Path $tempPath -Value $csvHeader -Encoding Unicode
 }
 
-# VERIFY CSV file creation
-Write-Verbose "CSV file created at: $tempPath"
-$initialLines = (Get-Content $tempPath -ErrorAction SilentlyContinue).Count
-Write-Verbose "Initial line count: $initialLines (should be 1 for headers)"
-
 # Load progress
 $progress = Get-Progress -ProgressFile $progressFile
 if (-not $progress) {
@@ -53,7 +48,7 @@ try {
 
     Write-Verbose "Processing each group and outputting one row per relationship"
 
-    # MINIMAL memory footprint - only small buffer for CSV writing
+    #  memory footprint - only small buffer for CSV writing
     $resultBuffer = [System.Collections.Generic.List[string]]::new()
 
     # Counters
@@ -255,7 +250,6 @@ try {
         }
     }
 
-    # Use repository's file management system
     $finalFileName = "EntraGroups-Relationships_$timestamp.csv"
     Move-ProcessedCSV -SourcePath $tempPath -FinalFileName $finalFileName -Config $config
 
@@ -280,7 +274,7 @@ try {
     
     throw
 } finally {
-    # Minimal cleanup
+    #  cleanup
     if ($resultBuffer) {
         $resultBuffer.Clear()
         $resultBuffer = $null
