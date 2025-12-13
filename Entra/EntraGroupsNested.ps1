@@ -46,8 +46,6 @@ try {
     # Connect to Graph
     Connect-ToGraph -Config $config.EntraID
 
-    Write-Verbose "Processing each group and outputting one row per relationship"
-
     #  memory footprint - only small buffer for CSV writing
     $resultBuffer = [System.Collections.Generic.List[string]]::new()
 
@@ -73,9 +71,9 @@ try {
         # Memory check
         if (Test-MemoryPressure -ThresholdGB $config.EntraID.MemoryThresholdGB `
                                 -WarningGB $config.EntraID.MemoryWarningThresholdGB) {
-            Write-Verbose "  Memory pressure - writing buffer..."
+            Write-Verbose "Memory pressure - writing buffer..."
             if ($resultBuffer.Count -gt 0) {
-                Write-Verbose "    Emergency write: $($resultBuffer.Count) lines"
+                Write-Verbose "Emergency write: $($resultBuffer.Count) lines"
                 if ($PSVersionTable.PSVersion.Major -ge 6) {
                     $resultBuffer | Add-Content -Path $tempPath -Encoding UTF8
                 } else {
@@ -135,7 +133,7 @@ try {
                             }
                         }
                     } catch {
-                        Write-Warning "    Error getting nested groups: $_"
+                        Write-Warning "Error getting nested groups: $_"
                     }
                     
                     # RELATIONSHIP 2: What cloud-only groups contain this group? (Parents)
@@ -153,7 +151,7 @@ try {
                             }
                         }
                     } catch {
-                        Write-Warning "    Error getting parent groups: $_"
+                        Write-Warning "Error getting parent groups: $_"
                     }
                     
                     # OUTPUT ONE ROW PER NESTED GROUP (Contains relationship)
@@ -175,11 +173,11 @@ try {
                     }
                     
                     if ($nestedGroups.Count -gt 0 -or $parentGroups.Count -gt 0) {
-                        Write-Verbose "    ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $relationshipsWritten)"
+                        Write-Verbose "ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $relationshipsWritten)"
                         
                         # Write to file IMMEDIATELY for small buffers (every 10 results)
                         if ($resultBuffer.Count -ge 10) {
-                            Write-Verbose "    Writing $($resultBuffer.Count) results to CSV..."
+                            Write-Verbose "Writing $($resultBuffer.Count) results to CSV..."
                             
                             # DIRECT FILE WRITE
                             try {
@@ -192,22 +190,22 @@ try {
                                 
                                 # VERIFY the write worked
                                 $currentLines = (Get-Content $tempPath).Count
-                                Write-Verbose "      Write successful! CSV now has $currentLines total lines"
+                                Write-Verbose "Write successful! CSV now has $currentLines total lines"
                                 
                             } catch {
-                                Write-Error "       Write failed: $_"
+                                Write-Error "Write failed: $_"
                             }
                         }
                     } else {
-                        Write-Verbose "    - No nesting relationships (skipped)"
+                        Write-Verbose "- No nesting relationships (skipped)"
                     }
                     
                 } catch {
-                    Write-Warning "  Error processing group $($group.displayName): $_"
+                    Write-Warning "Error processing group $($group.displayName): $_"
                     
                     # Rate limiting on errors
                     if ($_.Exception.Message -match "throttled|rate limit|429") {
-                        Write-Verbose "    Detected throttling - extended pause..."
+                        Write-Verbose "Detected throttling - extended pause..."
                         Start-Sleep -Seconds 2
                     }
                 }
@@ -260,8 +258,6 @@ try {
 
     # Final results
     Write-Verbose "Total groups processed: $totalGroupsProcessed"
-    Write-Verbose "Cloud-only groups found: $cloudOnlyGroupsFound"
-    Write-Verbose "Relationships written to CSV: $relationshipsWritten"
 
 } catch {
     Write-Error "Error in nested groups collection: $_"
