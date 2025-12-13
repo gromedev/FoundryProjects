@@ -49,7 +49,7 @@ try {
     Connect-ToGraph -Config $config.EntraID
     
     # Get SKU mapping for licenses
-    Write-Host "Getting license SKU mappings..."
+    Write-Verbose "Getting license SKU mappings..."
     $skus = Get-MgSubscribedSku
     $skuLookup = @{}
     foreach ($sku in $skus) {
@@ -68,11 +68,11 @@ try {
     $selectFields = "userPrincipalName,id,accountEnabled,userType,assignedLicenses,customSecurityAttributes,createdDateTime,signInActivity,onPremisesSyncEnabled,onPremisesSamAccountName,passwordPolicies"
     $nextLink = Get-InitialUserQuery -Config $config.EntraID -SelectFields $selectFields -BatchSize $batchSize
     
-    Write-Host "Starting combined user, license, and group collection..."
+    Write-Verbose "Starting combined user, license, and group collection..."
     
     while ($nextLink) {
         $batchNumber++
-        Write-Host "Processing batch $batchNumber..."
+        Write-Verbose "Processing batch $batchNumber..."
         
         # Check memory only every 10 batches
         if ($batchNumber % 10 -eq 0) {
@@ -134,9 +134,7 @@ try {
                 $localGroupCache = $using:groupCache
                 
                 try {
-                    # ===========================================
-                    # PART 1: USER BASIC DATA (no licenses)
-                    # ===========================================
+                    #region USER BASIC DATA (no licenses)
                     
                     # Handle custom attributes
                     $attributes = if ($user.customSecurityAttributes -and 
@@ -198,9 +196,8 @@ try {
                         }
                     }
                     
-                    # ===========================================
-                    # PART 4: USER GROUP MEMBERSHIPS
-                    # ===========================================
+                    #endregion
+                    #region USER GROUP MEMBERSHIPS
                     
                     # Get user's direct group memberships
                     $directGroups = Invoke-GraphWithRetry `
@@ -269,6 +266,7 @@ try {
                             }
                             
                             $groupInfo = $localGroupCache[$group.id]
+                            #endregion
                             
                             # Format CSV line with both GroupId and GroupName
                             $lineGroup = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`"" -f `
@@ -332,11 +330,11 @@ try {
             }
             
             $totalProcessed += $users.Count
-            Write-Host "Completed batch $batchNumber. Total users processed: $totalProcessed"
+            Write-Verbose "Completed batch $batchNumber. Total users processed: $totalProcessed"
         }
     }
     
-    Write-Host "Processing complete. Total users processed: $totalProcessed" -ForegroundColor Green
+    Write-Verbose "Processing complete. Total users processed: $totalProcessed"
     
     # Move ALL FOUR files to final location
     Move-ProcessedCSV -SourcePath $tempPathUsers -FinalFileName "EntraUsers-BasicData_$timestamp.csv" -Config $config

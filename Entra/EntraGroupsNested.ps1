@@ -31,9 +31,9 @@ if ($PSVersionTable.PSVersion.Major -ge 6) {
 }
 
 # VERIFY CSV file creation
-Write-Host "CSV file created at: $tempPath" -ForegroundColor Cyan
+Write-Verbose "CSV file created at: $tempPath"
 $initialLines = (Get-Content $tempPath -ErrorAction SilentlyContinue).Count
-Write-Host "Initial line count: $initialLines (should be 1 for headers)" -ForegroundColor Cyan
+Write-Verbose "Initial line count: $initialLines (should be 1 for headers)"
 
 # Load progress
 $progress = Get-Progress -ProgressFile $progressFile
@@ -51,7 +51,7 @@ try {
     # Connect to Graph
     Connect-ToGraph -Config $config.EntraID
 
-    Write-Host "Processing each group and outputting one row per relationship" -ForegroundColor Yellow
+    Write-Verbose "Processing each group and outputting one row per relationship"
 
     # MINIMAL memory footprint - only small buffer for CSV writing
     $resultBuffer = [System.Collections.Generic.List[string]]::new()
@@ -65,7 +65,7 @@ try {
     # Build query
     if ($TestGroup) {
         $nextLink = "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$TestGroup'&`$select=displayName,id,onPremisesSyncEnabled,onPremisesSecurityIdentifier,securityEnabled,mailEnabled,mail&`$top=$($config.EntraID.BatchSize)"
-        Write-Host "Testing with group: $TestGroup" -ForegroundColor Cyan
+        Write-Verbose "Testing with group: $TestGroup"
     } else {
         $nextLink = "https://graph.microsoft.com/v1.0/groups?`$select=displayName,id,onPremisesSyncEnabled,onPremisesSecurityIdentifier,securityEnabled,mailEnabled,mail&`$top=$($config.EntraID.BatchSize)"
     }
@@ -73,14 +73,14 @@ try {
     # Process each group immediately as we find it
     while ($nextLink) {
         $batchNumber++
-        Write-Host "Processing batch $batchNumber..." -ForegroundColor Gray
+        Write-Verbose "Processing batch $batchNumber..."
         
         # Memory check
         if (Test-MemoryPressure -ThresholdGB $config.EntraID.MemoryThresholdGB `
                                 -WarningGB $config.EntraID.MemoryWarningThresholdGB) {
-            Write-Host "  Memory pressure - writing buffer..." -ForegroundColor Yellow
+            Write-Verbose "  Memory pressure - writing buffer..."
             if ($resultBuffer.Count -gt 0) {
-                Write-Host "    Emergency write: $($resultBuffer.Count) lines" -ForegroundColor Yellow
+                Write-Verbose "    Emergency write: $($resultBuffer.Count) lines"
                 if ($PSVersionTable.PSVersion.Major -ge 6) {
                     $resultBuffer | Add-Content -Path $tempPath -Encoding UTF8
                 } else {
@@ -96,7 +96,7 @@ try {
         $nextLink = $batchData.NextLink
         
         if ($groups.Count -eq 0) { 
-            Write-Host "  No more groups found" -ForegroundColor Gray
+            Write-Verbose "  No more groups found"
             break 
         }
         
@@ -117,7 +117,7 @@ try {
                     else { "MailEnabledSecurity" }
                 } else { "Security" }
                 
-                Write-Host "  Checking: $($group.displayName)" -ForegroundColor DarkGray
+                Write-Verbose "  Checking: $($group.displayName)"
                 
                 try {
                     # Rate limiting to prevent Graph timeouts
@@ -180,11 +180,11 @@ try {
                     }
                     
                     if ($nestedGroups.Count -gt 0 -or $parentGroups.Count -gt 0) {
-                        Write-Host "    ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $relationshipsWritten)" -ForegroundColor Green
+                        Write-Verbose "    ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $relationshipsWritten)"
                         
                         # Write to file IMMEDIATELY for small buffers (every 10 results)
                         if ($resultBuffer.Count -ge 10) {
-                            Write-Host "    Writing $($resultBuffer.Count) results to CSV..." -ForegroundColor Cyan
+                            Write-Verbose "    Writing $($resultBuffer.Count) results to CSV..."
                             
                             # DIRECT FILE WRITE
                             try {
@@ -197,14 +197,14 @@ try {
                                 
                                 # VERIFY the write worked
                                 $currentLines = (Get-Content $tempPath).Count
-                                Write-Host "      Write successful! CSV now has $currentLines total lines" -ForegroundColor Green
+                                Write-Verbose "      Write successful! CSV now has $currentLines total lines"
                                 
                             } catch {
                                 Write-Error "       Write failed: $_"
                             }
                         }
                     } else {
-                        Write-Host "    - No nesting relationships (skipped)" -ForegroundColor DarkYellow
+                        Write-Verbose "    - No nesting relationships (skipped)"
                     }
                     
                 } catch {
@@ -212,7 +212,7 @@ try {
                     
                     # Rate limiting on errors
                     if ($_.Exception.Message -match "throttled|rate limit|429") {
-                        Write-Host "    Detected throttling - extended pause..." -ForegroundColor Red
+                        Write-Verbose "    Detected throttling - extended pause..."
                         Start-Sleep -Seconds 2
                     }
                 }
@@ -220,7 +220,7 @@ try {
             
             # Progress update every 500 groups
             if ($totalGroupsProcessed % 500 -eq 0) {
-                Write-Host "  Progress: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written" -ForegroundColor Cyan
+                Write-Verbose "  Progress: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written"
                 
                 # Save progress frequently
                 $progress.ProcessedGroups = $totalGroupsProcessed
@@ -231,12 +231,12 @@ try {
             }
         }
         
-        Write-Host "Batch $batchNumber complete: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written" -ForegroundColor Gray
+        Write-Verbose "Batch $batchNumber complete: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written"
     }
 
     # Write any remaining buffer
     if ($resultBuffer.Count -gt 0) {
-        Write-Host "Writing final $($resultBuffer.Count) results to CSV..." -ForegroundColor Cyan
+        Write-Verbose "Writing final $($resultBuffer.Count) results to CSV..."
         
         # DIRECT FILE WRITE with verification
         try {
@@ -248,7 +248,7 @@ try {
             
             # FINAL VERIFICATION
             $finalLines = (Get-Content $tempPath).Count
-            Write-Host "Final write successful! CSV has $finalLines total lines" -ForegroundColor Green
+            Write-Verbose "Final write successful! CSV has $finalLines total lines"
             
         } catch {
             Write-Error " Final write failed: $_"
@@ -265,9 +265,9 @@ try {
     }
 
     # Final results
-    Write-Host "Total groups processed: $totalGroupsProcessed" -ForegroundColor White
-    Write-Host "Cloud-only groups found: $cloudOnlyGroupsFound" -ForegroundColor Cyan
-    Write-Host "Relationships written to CSV: $relationshipsWritten" -ForegroundColor Yellow
+    Write-Verbose "Total groups processed: $totalGroupsProcessed"
+    Write-Verbose "Cloud-only groups found: $cloudOnlyGroupsFound"
+    Write-Verbose "Relationships written to CSV: $relationshipsWritten"
 
 } catch {
     Write-Error "Error in nested groups collection: $_"
@@ -290,5 +290,5 @@ try {
     [System.GC]::Collect()
     
     $finalMemory = (Get-Process -Id $pid).WorkingSet64 / 1GB
-    Write-Host "Final memory: $([Math]::Round($finalMemory,1))GB" -ForegroundColor Gray
+    Write-Verbose "Final memory: $([Math]::Round($finalMemory,1))GB"
 }

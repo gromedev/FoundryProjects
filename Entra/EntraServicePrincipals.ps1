@@ -73,11 +73,11 @@ try {
     # Build initial query for service principals
     $nextLink = "https://graph.microsoft.com/v1.0/serviceprincipals?`$select=$selectFields&`$top=$batchSize"
     
-    Write-Host "Starting service principal collection..."
+    Write-Verbose "Starting service principal collection..."
     
     while ($nextLink) {
         $batchNumber++
-        Write-Host "Processing batch $batchNumber..."
+        Write-Verbose "Processing batch $batchNumber..."
         
         # Check memory pressure every 10 batches
         if ($batchNumber % 10 -eq 0) {
@@ -151,9 +151,7 @@ try {
                         ($sp.notes -replace "`r`n", " " -replace "`n", " " -replace "`t", " " -replace '"', '""').Trim()
                     } else { "" }
                     
-                    # ===========================================
-                    # BASIC DATA (without multi-value fields)
-                    # ===========================================
+                    # BASIC DATA
                     $lineBasic = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
                         ($sp.id ?? ""),
                         (($sp.displayName ?? "") -replace '"', '""'),
@@ -167,10 +165,8 @@ try {
                         (($sp.servicePrincipalType ?? "") -replace '"', '""')
                     
                     $localBatchResultsBasic.Add($lineBasic)
-                    
-                    # ===========================================
-                    # OAUTH2 PERMISSION SCOPES (separate CSV)
-                    # ===========================================
+
+                    # OAUTH2 PERMISSION SCOPES
                     if ($sp.oauth2PermissionScopes -and $sp.oauth2PermissionScopes.Count -gt 0) {
                         foreach ($scope in $sp.oauth2PermissionScopes) {
                             if ($scope.value) {
@@ -184,9 +180,7 @@ try {
                         }
                     }
                     
-                    # ===========================================
-                    # RESOURCE-SPECIFIC APP PERMISSIONS (separate CSV)
-                    # ===========================================
+                    # RESOURCE-SPECIFIC APP PERMISSIONS
                     if ($sp.resourceSpecificApplicationPermissions -and $sp.resourceSpecificApplicationPermissions.Count -gt 0) {
                         foreach ($permission in $sp.resourceSpecificApplicationPermissions) {
                             if ($permission.value) {
@@ -200,9 +194,7 @@ try {
                         }
                     }
                     
-                    # ===========================================
-                    # SERVICE PRINCIPAL NAMES (separate CSV)
-                    # ===========================================
+                    # SERVICE PRINCIPAL NAMES
                     if ($sp.servicePrincipalNames -and $sp.servicePrincipalNames.Count -gt 0) {
                         foreach ($spName in $sp.servicePrincipalNames) {
                             if ($spName) {
@@ -216,9 +208,7 @@ try {
                         }
                     }
                     
-                    # ===========================================
-                    # TAGS (separate CSV)
-                    # ===========================================
+                    # TAGS
                     if ($sp.tags -and $sp.tags.Count -gt 0) {
                         foreach ($tag in $sp.tags) {
                             if ($tag) {
@@ -306,7 +296,7 @@ try {
             }
             
             $totalProcessed += $servicePrincipals.Count
-            Write-Host "Completed batch $batchNumber. Total service principals processed: $totalProcessed"
+            Write-Verbose "Completed batch $batchNumber. Total service principals processed: $totalProcessed"
         }
         
         # Clear batch data to manage memory
@@ -370,7 +360,7 @@ try {
         }
     }
     
-    Write-Host "Processing complete! Total service principals processed: $totalProcessed" -ForegroundColor Green
+    Write-Verbose "Processing complete! Total service principals processed: $totalProcessed"
     
     # Move ALL FIVE files to final location
     Move-ProcessedCSV -SourcePath $tempPathBasic -FinalFileName "EntraServicePrincipals-BasicData_$timestamp.csv" -Config $config

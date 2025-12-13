@@ -33,7 +33,7 @@ Set-Content -Path $tempPathTypes -Value $csvHeaderTypes -Encoding UTF8
 $csvHeaderTags = "`"GroupId`",`"GroupName`",`"Tag`""
 Set-Content -Path $tempPathTags -Value $csvHeaderTags -Encoding UTF8
 
-Write-Host "CSV Headers created" -ForegroundColor Yellow
+Write-Verbose "CSV Headers created"
 
 # Proper CSV escaping function with explicit empty quotes for nulls
 function ConvertTo-SafeCSV {
@@ -69,12 +69,12 @@ try {
     
     $nextLink = "https://graph.microsoft.com/beta/groups?`$select=$selectFields&`$top=$batchSize"
     
-    Write-Host "Using BETA endpoint for reliable isAssignableToRole values" -ForegroundColor Cyan
-    Write-Host "Starting cloud-only groups collection..."
+    Write-Verbose "Using BETA endpoint for reliable isAssignableToRole values"
+    Write-Verbose "Starting cloud-only groups collection..."
     
     while ($nextLink) {
         $batchNumber++
-        Write-Host "Processing batch $batchNumber..."
+        Write-Verbose "Processing batch $batchNumber..."
         
         # Check memory only every 10 batches
         if ($batchNumber % 10 -eq 0) {
@@ -214,11 +214,11 @@ try {
             }
             
             $totalProcessed += $groups.Count
-            Write-Host "Completed batch $batchNumber. Total groups processed: $totalProcessed"
+            Write-Verbose "Completed batch $batchNumber. Total groups processed: $totalProcessed"
         }
     }
     
-    Write-Host "Processing complete. Total cloud-only groups processed: $totalProcessed" -ForegroundColor Green
+    Write-Verbose "Processing complete. Total cloud-only groups processed: $totalProcessed"
     
     # Move ALL THREE files to final location
     Move-ProcessedCSV -SourcePath $tempPathBasic -FinalFileName "EntraGroups-BasicData_$timestamp.csv" -Config $config

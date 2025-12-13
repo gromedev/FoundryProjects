@@ -38,14 +38,12 @@ try {
     $totalProcessed = 0
     $permissionsFound = 0
     
-    # ===========================================
-    # STEP 1: Build ENTRA ROLE lookup table
-    # ===========================================
-    Write-Host "Building Entra role lookup table..."
+    #region Build Entra role lookup table
+    Write-Verbose "Building Entra role lookup table..."
     $userEntraRoles = @{}  # userId -> array of role assignments
     
     # Get all ACTIVE role assignments in bulk
-    Write-Host "Collecting all active role assignments..."
+    Write-Verbose "Collecting all active role assignments..."
     try {
         $nextLink = "https://graph.microsoft.com/beta/roleManagement/directory/roleAssignmentScheduleInstances?`$expand=principal,roleDefinition&`$select=principalId,assignmentType,principal,roleDefinition"
         $assignmentCount = 0
@@ -108,7 +106,7 @@ try {
             }
         }
         
-        Write-Host "Found $assignmentCount active role assignments"
+        Write-Verbose "Found $assignmentCount active role assignments"
         
         [System.GC]::Collect()
         
@@ -117,7 +115,7 @@ try {
     }
     
     # Get all ELIGIBLE role assignments in bulk
-    Write-Host "Collecting all eligible role assignments..."
+    Write-Verbose "Collecting all eligible role assignments..."
     try {
         $nextLink = "https://graph.microsoft.com/beta/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal,roleDefinition&`$select=principalId,principal,roleDefinition"
         $assignmentCount = 0
@@ -173,7 +171,7 @@ try {
             }
         }
         
-        Write-Host "Found $assignmentCount eligible role assignments"
+        Write-Verbose "Found $assignmentCount eligible role assignments"
         
         [System.GC]::Collect()
         
@@ -181,17 +179,15 @@ try {
         Write-Warning "Error collecting eligible role assignments: $_"
     }
     
-    Write-Host "Entra role lookup table built with $($userEntraRoles.Count) entries"
-    
-    # ===========================================
-    # STEP 2: Build GRAPH PERMISSIONS lookup table
-    # ===========================================
-    Write-Host "Building Graph permissions lookup table..."
+    Write-Verbose "Entra role lookup table built with $($userEntraRoles.Count) entries"
+    #endregion
+    #region Build GRAPH PERMISSIONS lookup table
+    Write-Verbose "Building Graph permissions lookup table..."
     $userGraphPermissions = @{}  # userId -> array of graph permissions
     $spCache = @{}  # Service principal cache
     
     # Get all OAuth2 permission grants (delegated permissions) in bulk
-    Write-Host "Collecting all OAuth2 permission grants..."
+    Write-Verbose "Collecting all OAuth2 permission grants..."
     try {
         $nextLink = "https://graph.microsoft.com/v1.0/oauth2PermissionGrants"
         $grantCount = 0
@@ -247,7 +243,7 @@ try {
             }
         }
         
-        Write-Host "Found $grantCount OAuth2 permission grants"
+        Write-Verbose "Found $grantCount OAuth2 permission grants"
         
         [System.GC]::Collect()
         
@@ -255,25 +251,24 @@ try {
         Write-Warning "Error collecting OAuth2 permission grants: $_"
     }
     
-    Write-Host "Graph permissions lookup table built with $($userGraphPermissions.Count) users"
+    Write-Verbose "Graph permissions lookup table built with $($userGraphPermissions.Count) users"
     
-    # ===========================================
-    # STEP 3: Process users and combine permissions
-    # ===========================================
-    Write-Host "Processing users in batches..."
+    #endregion
+    #region Process users and combine permissions
+    Write-Verbose "Processing users in batches..."
     $batchSize = $config.EntraID.BatchSize
     $batchNumber = 0
     
     if ($TestUser) {
         $nextLink = "https://graph.microsoft.com/v1.0/users?`$filter=startsWith(userPrincipalName,'$TestUser')&`$select=id,userPrincipalName&`$top=$batchSize"
-        Write-Host "Testing with user: $TestUser"
+        Write-Verbose "Testing with user: $TestUser"
     } else {
         $nextLink = Get-InitialUserQuery -Config $config.EntraID -SelectFields "id,userPrincipalName" -BatchSize $batchSize
     }
     
     while ($nextLink) {
         $batchNumber++
-        Write-Host "Processing user batch $batchNumber..."
+        Write-Verbose "Processing user batch $batchNumber..."
         
         # Check memory
         if (Test-MemoryPressure -ThresholdGB $config.EntraID.MemoryThresholdGB `
@@ -297,9 +292,7 @@ try {
             foreach ($user in $users) {
                 $userHasAnyPermissions = $false
                 
-                # ===========================================
                 # OUTPUT ENTRA ROLES
-                # ===========================================
                 $userEntraRoleList = @()
                 
                 # Check direct user roles (by userId)
@@ -333,9 +326,7 @@ try {
                     }
                 }
                 
-                # ===========================================
                 # OUTPUT GRAPH DELEGATED PERMISSIONS
-                # ===========================================
                 if ($userGraphPermissions.ContainsKey($user.id)) {
                     foreach ($permission in $userGraphPermissions[$user.id]) {
                         $line = "`"{0}`",`"{1}`",`"{2}`",`"{3}`",`"{4}`",`"{5}`",`"{6}`",`"{7}`",`"{8}`",`"{9}`"" -f `
@@ -356,9 +347,7 @@ try {
                     }
                 }
                 
-                # ===========================================
                 # OUTPUT GRAPH APPLICATION PERMISSIONS (per user)
-                # ===========================================
                 try {
                     $appRoleAssignments = Invoke-GraphWithRetry `
                         -Uri "https://graph.microsoft.com/v1.0/users/$($user.id)/appRoleAssignments" `
@@ -409,7 +398,7 @@ try {
                     }
                 }
                 catch {
-                    # Error getting app role assignments for this user - continue
+                    # Error
                 }
                 
                 # If user has NO permissions at all, add empty entry
@@ -436,7 +425,7 @@ try {
                 }
             }
             
-            Write-Host "Completed batch $batchNumber. Total users processed: $totalProcessed... Found $permissionsFound permissions"
+            Write-Verbose "Completed batch $batchNumber. Total users processed: $totalProcessed... Found $permissionsFound permissions"
         }
         
         # Clear batch data
@@ -449,9 +438,9 @@ try {
         Write-BufferToFile -Buffer $resultBuffer -FilePath $tempPath
     }
     
-    Write-Host "Processing complete!" -ForegroundColor Green
-    Write-Host "Total users processed: $totalProcessed" -ForegroundColor Cyan
-    Write-Host "Total permissions found: $permissionsFound" -ForegroundColor Cyan
+    Write-Verbose "Processing complete!"
+    Write-Verbose "Total users processed: $totalProcessed"
+    Write-Verbose "Total permissions found: $permissionsFound"
     
     # Move to final location
     Move-ProcessedCSV -SourcePath $tempPath -FinalFileName "EntraUsers-AllPermissions_$timestamp.csv" -Config $config

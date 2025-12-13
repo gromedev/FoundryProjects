@@ -87,7 +87,7 @@ function Connect-ToGraph {
             
             $context = Get-MgContext
             if ($context) {
-                Write-Host "Successfully connected to Graph API"
+                Write-Verbose "Successfully connected to Graph API"
                 return $true
             }
         }
@@ -267,7 +267,7 @@ Existing Size: $existingSize bytes
     
     # Move to final location
     Move-Item -Path $SourcePath -Destination $finalPath -Force
-    Write-Host "CSV saved to: $finalPath"
+    Write-Verbose "CSV saved to: $finalPath"
 }
 function Save-Progress {
     <#
@@ -295,7 +295,7 @@ function Get-Progress {
     )
     
     if (Test-Path $ProgressFile) {
-        Write-Host "Resuming from previous progress..."
+        Write-Verbose "Resuming from previous progress..."
         return Get-Content $ProgressFile | ConvertFrom-Json -AsHashtable
     }
     
@@ -353,7 +353,7 @@ function Get-InitialUserQuery {
     )
     
     if ($Config.ScopeToGroup -and $Config.TargetGroup) {
-        Write-Host "Scoping collection to group: $($Config.TargetGroup)"
+        Write-Verbose "Scoping collection to group: $($Config.TargetGroup)"
         
         # Get the group ID
         $groupResponse = Invoke-GraphWithRetry `
@@ -365,12 +365,12 @@ function Get-InitialUserQuery {
         }
         
         $groupId = $groupResponse.value[0].id
-        Write-Host "Found group ID: $groupId"
+        Write-Verbose "Found group ID: $groupId"
         
         return "https://graph.microsoft.com/v1.0/groups/$groupId/members?`$select=$SelectFields&`$top=$BatchSize"
     }
     else {
-        Write-Host "Collecting all users in tenant"
+        Write-Verbose "Collecting all users in tenant"
         return "https://graph.microsoft.com/v1.0/users?`$select=$SelectFields&`$top=$BatchSize"
     }
 }
