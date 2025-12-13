@@ -22,6 +22,7 @@ function Get-Config {
             Paths = @{
                 CSV = Join-Path $PSScriptRoot "Import\CSVs"
                 Temp = Join-Path $PSScriptRoot "Import\temp"
+                Error = Join-Path $PSScriptRoot "Import\Error"
             }
             EntraID = @{
                 TenantId = "thomasmartingrome.onmicrosoft.com"
@@ -210,7 +211,6 @@ function Write-BufferToFile {
         $Buffer.Clear()
     }
 }
-
 function Save-Progress {
     <#
     .SYNOPSIS
