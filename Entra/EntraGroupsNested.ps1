@@ -175,7 +175,7 @@ try {
                     if ($nestedGroups.Count -gt 0 -or $parentGroups.Count -gt 0) {
                         Write-Verbose "ADDED: $($nestedGroups.Count) children, $($parentGroups.Count) parents (Total written: $relationshipsWritten)"
                         
-                        # Write to file IMMEDIATELY for small buffers (every 10 results)
+                        # Write to file for small buffers (every 10 results)
                         if ($resultBuffer.Count -ge 10) {
                             Write-Verbose "Writing $($resultBuffer.Count) results to CSV..."
                             
@@ -186,12 +186,7 @@ try {
                                 } else {
                                     $resultBuffer | Add-Content -Path $tempPath -Encoding Unicode
                                 }
-                                $resultBuffer.Clear()
-                                
-                                # VERIFY the write worked
-                                $currentLines = (Get-Content $tempPath).Count
-                                Write-Verbose "Write successful! CSV now has $currentLines total lines"
-                                
+                                $resultBuffer.Clear()                      
                             } catch {
                                 Write-Error "Write failed: $_"
                             }
@@ -213,7 +208,7 @@ try {
             
             # Progress update every 500 groups
             if ($totalGroupsProcessed % 500 -eq 0) {
-                Write-Verbose "  Progress: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written"
+                Write-Verbose "Progress: $totalGroupsProcessed total, $cloudOnlyGroupsFound cloud-only, $relationshipsWritten relationships written"
                 
                 # Save progress frequently
                 $progress.ProcessedGroups = $totalGroupsProcessed
@@ -244,7 +239,7 @@ try {
             Write-Verbose "Final write successful! CSV has $finalLines total lines"
             
         } catch {
-            Write-Error " Final write failed: $_"
+            Write-Error "Final write failed: $_"
         }
     }
 
