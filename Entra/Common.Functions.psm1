@@ -2,78 +2,63 @@
 <#
 .SYNOPSIS
     Common functions for data collection
-    Save-Progress, Get-Progress, Get-GraphBatch, Invoke-GraphRequestWithPaging, Get-InitialUserQuery
+#>
 
-    | Function | EntraUsersAndGroups | EntraGroups | EntraGroupsNested | EntraPermissions | EntraServicePrincipals |
-
-| Invoke-GraphRequestWithPaging | X | X | X | ✓ | X |
----> EntraPermissions
-
-| Save-Progress | X | X | ✓ | X | X |
----> EntraGroupsNested
-
-| Get-Progress | X | X | ✓ | X | X |
----> EntraGroupsNested
-
-
-| Get-InitialUserQuery | ✓ | X | X | ✓ | X |
----> EntraUsersAndGroups
---->  EntraPermissions
-
-| Get-GraphBatch | X | ✓ | ✓ | ✓ | ✓ |
----> EntraUsersAndGroups
-
-#> 
-
-
-$script:Config = @{
-    Modules = @{
-        BasePath = "Modules"
-        Common = "Common.Functions.psm1"
-    }
-    Paths = @{
-        CSV = Join-Path $PSScriptRoot "Import\CSVs"
-        Temp = Join-Path $PSScriptRoot "Import\temp"
-    }
-    EntraID = @{
-        TenantId = "thomasmartingrome.onmicrosoft.com"
-        ClientId = "f8091812-4a88-44c6-9c1d-4ea5abe1bda6"
-        CertificateThumbprint = "97a1540bc199dd4406d48101073879ba2573390e"
-        BatchSize = 999
-        ParallelThrottle = 10
-        RateLimitDelayMs = 10
-        RetryAttempts = 3
-        RetryDelaySeconds = 5
-        MemoryThresholdGB = 12
-        MemoryWarningThresholdGB = 10
-        TargetGroup = $null
-        ScopeToGroup = $false
-    }
-    ActiveDirectory = @{
-        BufferLimit = 1000
-    }
-    FileManagement = @{
-        SizeThresholdPercent = 20
-        DateFormat = "yyyyMMdd_HHmmss"
-    }
-    Metrics = @{
-        StaleAccountThresholdDays = 90
-        HashTableLimits = @{
-            UniqueUsers = 500000
-            UniqueGroups = 5000000
-            UniqueRoles = 500000
-            UniqueApplications = 500000
-        }
-        MemoryCheckInterval = 50000
-    }
-}
 function Get-Config {
-    <#
-    .SYNOPSIS
-        Returns the module configuration as script-level configuration hashtable.
-    #>
-    param([string]$ConfigPath = $null)
-    return $script:Config
+<#
+.SYNOPSIS
+Returns the module configuration, initialized once. Adjust values as required:
+- Modules, Common: Do not change.
+- Paths: Do not change.
+- TenantId, ClientId, CertificateThumbprint: define the Entra ID authentication context.
+- BatchSize, ParallelThrottle, RateLimitDelayMs: control API throughput.
+- RetryAttempts, RetryDelaySeconds: define fault-handling behavior.
+- MemoryThresholdGB, MemoryWarningThresholdGB: set memory safety limits.
+- TargetGroup, ScopeToGroup: govern scoping (optional).
+- SizeThresholdPercent, DateFormat: control file-management behavior.
+- UniqueUsers, UniqueGroups, UniqueRoles, UniqueApplications: set hashtable capacity expectations.
+- MemoryCheckInterval: defines how often memory usage is inspected.
+#>
+    if (-not $script:Config) {
+        $script:Config = @{
+            Modules = @{
+                Common = "Common.Functions.psm1"
+            }
+            Paths = @{
+                CSV = Join-Path $PSScriptRoot "Import\CSVs"
+                Temp = Join-Path $PSScriptRoot "Import\temp"
+            }
+            EntraID = @{
+                TenantId = "thomasmartingrome.onmicrosoft.com"
+                ClientId = "f8091812-4a88-44c6-9c1d-4ea5abe1bda6"
+                CertificateThumbprint = "97a1540bc199dd4406d48101073879ba2573390e"
+                BatchSize = 999
+                ParallelThrottle = 10
+                RateLimitDelayMs = 10
+                RetryAttempts = 3
+                RetryDelaySeconds = 5
+                MemoryThresholdGB = 12
+                MemoryWarningThresholdGB = 10
+                TargetGroup = $null
+                ScopeToGroup = $false
+            }
+            FileManagement = @{
+                SizeThresholdPercent = 20
+                DateFormat = "yyyyMMdd_HHmmss"
+            }
+            Metrics = @{
+                HashTableLimits = @{
+                    UniqueUsers = 500000
+                    UniqueGroups = 5000000
+                    UniqueRoles = 500000
+                    UniqueApplications = 500000
+                }
+                MemoryCheckInterval = 50000
+            }
+        }
+    }
+
+    $script:Config
 }
 function Initialize-DataPaths {
     <#
@@ -406,15 +391,15 @@ Export-ModuleMember -Function @(
     'Get-Config',
     'Set-ConfigValue',
     'Initialize-DataPaths',
-    'Move-ProcessedCSV',
-    'Test-MemoryPressure',
-    'Write-BufferToFile',
-    'Save-Progress',
-    'Get-Progress',
-    'Convert-ToStandardDateTime',
     'Connect-ToGraph',
     'Invoke-GraphWithRetry',
     'Get-GraphBatch',
     'Invoke-GraphRequestWithPaging',
     'Get-InitialUserQuery'
+    'Move-ProcessedCSV',
+    'Test-MemoryPressure',
+    'Write-BufferToFile',
+    'Save-Progress',
+    'Get-Progress',
+    'Convert-ToStandardDateTime'
 )
