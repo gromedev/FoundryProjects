@@ -5,7 +5,6 @@
 #>
 
 function Get-Config {
-<<<<<<< HEAD
     <#
     .SYNOPSIS
     Returns the module configuration, initialized once. Adjust values as required:
@@ -20,22 +19,6 @@ function Get-Config {
     - UniqueUsers, UniqueGroups, UniqueRoles, UniqueApplications: set hashtable capacity expectations.
     - MemoryCheckInterval: defines how often memory usage is inspected.
     #>
-=======
-<#
-.SYNOPSIS
-Returns the module configuration, initialized once. Adjust values as required:
-- Modules, Common: Do not change.
-- Paths: Do not change.
-- TenantId, ClientId, CertificateThumbprint: define the Entra ID authentication context.
-- BatchSize, ParallelThrottle, RateLimitDelayMs: control API throughput.
-- RetryAttempts, RetryDelaySeconds: define fault-handling behavior.
-- MemoryThresholdGB, MemoryWarningThresholdGB: set memory safety limits.
-- TargetGroup, ScopeToGroup: govern scoping (optional).
-- SizeThresholdPercent, DateFormat: control file-management behavior.
-- UniqueUsers, UniqueGroups, UniqueRoles, UniqueApplications: set hashtable capacity expectations.
-- MemoryCheckInterval: defines how often memory usage is inspected.
-#>
->>>>>>> 40d134d95f1a1dd9f6a435908b1ffff3e97ef282
     if (-not $script:Config) {
         $script:Config = @{
             Modules = @{
@@ -74,29 +57,11 @@ Returns the module configuration, initialized once. Adjust values as required:
             }
         }
     }
-<<<<<<< HEAD
     $config = $script:Config
 
-    # 2. Path Initialization (from the original Initialize-DataPaths)
+    # output paths creation
     foreach ($pathKey in $config.Paths.Keys) {
         $path = $config.Paths[$pathKey]
-=======
-
-    $script:Config
-}
-function Initialize-DataPaths {
-    <#
-    .SYNOPSIS
-        Creates all required directories if they don't exist
-    #>
-    param (
-        [Parameter(Mandatory)]
-        [object]$Config
-    )
-    
-    foreach ($pathKey in $Config.Paths.Keys) {
-        $path = $Config.Paths[$pathKey]
->>>>>>> 40d134d95f1a1dd9f6a435908b1ffff3e97ef282
         if (-not (Test-Path $path)) {
             New-Item -ItemType Directory -Path $path -Force | Out-Null
         }
@@ -416,11 +381,8 @@ function Get-InitialUserQuery {
 }
 Export-ModuleMember -Function @(
     'Get-Config',
-<<<<<<< HEAD
-=======
     'Set-ConfigValue',
     'Initialize-DataPaths',
->>>>>>> 40d134d95f1a1dd9f6a435908b1ffff3e97ef282
     'Connect-ToGraph',
     'Invoke-GraphWithRetry',
     'Get-GraphBatch',
