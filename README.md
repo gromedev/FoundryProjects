@@ -1,3 +1,422 @@
+
+# Foundry Local Training Workflow: Executive Summary
+
+## The Elevator Pitch
+
+Build a private AI assistant on your Mac that knows your documents and talks like an expert. Train custom language models using PyTorch, convert them to ONNX format with Microsoft Olive, and deploy locally via Foundry Local. Your data never leaves your machine, and the AI combines document retrieval (RAG) with fine-tuned responses for accurate, expert-level answers.
+
+---
+
+## Visual Workflow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    YOUR STARTING MATERIALS                      │
+├─────────────────────────────────────────────────────────────────┤
+│  📚 Documents          │  📝 Training Examples                  │
+│  • PDFs                │  • Q&A pairs showing                   │
+│  • Textbooks           │    desired response style              │
+│  • Code repos          │  • 50-100+ examples                    │
+│  • Markdown files      │  • JSONL format                        │
+└────────┬────────────────┴────────────────┬───────────────────────┘
+         │                                 │
+         │                                 │
+    ┌────▼────────┐                   ┌────▼──────────┐
+    │   RAG PATH  │                   │ TRAINING PATH │
+    │             │                   │               │
+    │  LlamaIndex │                   │   PyTorch +   │
+    │  + ChromaDB │                   │     LoRA      │
+    │             │                   │               │
+    │  Build      │                   │  Fine-tune    │
+    │  Vector     │                   │  Base Model   │
+    │  Index      │                   │               │
+    └────┬────────┘                   └────┬──────────┘
+         │                                 │
+         │                                 │
+         │                            ┌────▼──────────┐
+         │                            │ Merge LoRA    │
+         │                            │  Adapters     │
+         │                            └────┬──────────┘
+         │                                 │
+         │                            ┌────▼──────────┐
+         │                            │ Convert to    │
+         │                            │ ONNX (Olive)  │
+         │                            └────┬──────────┘
+         │                                 │
+         └────────────┬────────────────────┘
+                      │
+                 ┌────▼────────────────┐
+                 │  FOUNDRY LOCAL      │
+                 │                     │
+                 │  • ONNX Runtime     │
+                 │  • On-device AI     │
+                 │  • OpenAI-compat    │
+                 └────┬────────────────┘
+                      │
+                 ┌────▼────────────────┐
+                 │   YOUR AI ASSISTANT │
+                 │                     │
+                 │  Accurate answers   │
+                 │  Expert responses   │
+                 │  Private & local    │
+                 └─────────────────────┘
+```
+
+---
+
+## The Two-Part System
+
+### Part 1: RAG (Retrieval-Augmented Generation)
+
+**What it does:**
+```
+User Question → Search Documents → Find Relevant Chunks → Feed to AI → Cited Answer
+```
+
+**Purpose:** Ensures the AI answers with YOUR facts, not hallucinations
+
+**Example:**
+- Question: "What's on page 347 of the Azure Security textbook?"
+- RAG finds page 347, extracts the text, feeds it to the AI
+- AI answers accurately, citing the source
+
+### Part 2: Fine-Tuned Model
+
+**What it does:**
+```
+Base Model + Training Examples → PyTorch Training → Custom Model → ONNX Conversion
+```
+
+**Purpose:** Changes HOW the AI responds (style, terminology, structure)
+
+**Example:**
+- Base model: Generic, conversational responses
+- After training: Professional, technical Microsoft security expert tone
+
+---
+
+## Technical Stack Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         TECHNOLOGY LAYERS                        │
+├──────────────────────┬──────────────────────────────────────────┤
+│   DEPLOYMENT         │  Foundry Local                           │
+│                      │  (Microsoft's on-device AI platform)     │
+├──────────────────────┼──────────────────────────────────────────┤
+│   MODEL FORMAT       │  ONNX (Open Neural Network Exchange)     │
+│                      │  (Cross-platform ML standard)            │
+├──────────────────────┼──────────────────────────────────────────┤
+│   CONVERSION         │  Microsoft Olive                         │
+│                      │  (PyTorch → ONNX optimizer)              │
+├──────────────────────┼──────────────────────────────────────────┤
+│   TRAINING           │  PyTorch + PEFT (LoRA)                   │
+│                      │  (Industry-standard fine-tuning)         │
+├──────────────────────┼──────────────────────────────────────────┤
+│   RETRIEVAL          │  LlamaIndex + ChromaDB                   │
+│                      │  (Document indexing & search)            │
+├──────────────────────┼──────────────────────────────────────────┤
+│   HARDWARE           │  Mac M2 Pro (Mac14,9)                    │
+│                      │  32GB RAM, 16-core Neural Engine         │
+└──────────────────────┴──────────────────────────────────────────┘
+```
+
+---
+
+## Time & Resource Investment
+
+### One-Time Setup
+```
+┌────────────────────────────────────────┐
+│ Task                    │ Time         │
+├─────────────────────────┼──────────────┤
+│ Install prerequisites   │ 30 minutes   │
+│ Set up environment      │ 15 minutes   │
+│ Download base model     │ 20 minutes   │
+├─────────────────────────┼──────────────┤
+│ TOTAL SETUP             │ ~1 hour      │
+└────────────────────────────────────────┘
+```
+
+### Per-Model Training Cycle
+```
+┌────────────────────────────────────────┐
+│ Task                    │ Time         │
+├─────────────────────────┼──────────────┤
+│ Prepare training data   │ 1-2 hours    │
+│ Fine-tune model         │ 2-4 hours    │
+│ Convert to ONNX         │ 30-60 min    │
+│ Import to Foundry       │ 10 minutes   │
+│ Test & validate         │ 30 minutes   │
+├─────────────────────────┼──────────────┤
+│ TOTAL PER MODEL         │ 5-8 hours    │
+└────────────────────────────────────────┘
+```
+
+### RAG System Setup
+```
+┌────────────────────────────────────────┐
+│ Task                    │ Time         │
+├─────────────────────────┼──────────────┤
+│ Add documents           │ 10 minutes   │
+│ Build vector index      │ 10-30 min*   │
+│ Test queries            │ 10 minutes   │
+├─────────────────────────┼──────────────┤
+│ TOTAL RAG SETUP         │ 30-50 min    │
+└────────────────────────────────────────┘
+
+* Depends on document count
+```
+
+### Hardware Requirements
+```
+┌─────────────────────────────────────────────────┐
+│ Component    │ Minimum      │ Your Mac (Ideal) │
+├──────────────┼──────────────┼──────────────────┤
+│ RAM          │ 16GB         │ 32GB ✓           │
+│ Storage      │ 50GB free    │ 100GB+ ✓         │
+│ Processor    │ Apple M1     │ M2 Pro ✓         │
+│ macOS        │ 12.0+        │ Latest ✓         │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## What You Get
+
+### Capabilities After Setup
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        YOUR AI ASSISTANT                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ✓ Document Knowledge                                           │
+│    Query thousands of pages of textbooks, PDFs, code            │
+│    Get accurate, cited answers from YOUR materials              │
+│                                                                  │
+│  ✓ Expert Response Style                                        │
+│    Trained to respond like a Microsoft security expert          │
+│    Uses proper terminology, structure, and depth                │
+│                                                                  │
+│  ✓ Complete Privacy                                             │
+│    Everything runs locally on your Mac                          │
+│    No cloud, no data leaves your machine                        │
+│                                                                  │
+│  ✓ Production Ready                                             │
+│    ONNX format compatible with enterprise deployments           │
+│    Integrates with Microsoft's AI ecosystem                     │
+│                                                                  │
+│  ✓ Customizable                                                 │
+│    Add new documents anytime (RAG updates automatically)        │
+│    Retrain for different expertise areas                        │
+│    Tune response style with new training examples               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## The Decision Tree
+
+### When to Use This Approach
+
+```
+                    Need local AI?
+                         │
+                    ┌────┴────┐
+                   YES       NO → Use cloud APIs
+                    │
+              Need custom      
+             training/docs?    
+                    │
+              ┌─────┴─────┐
+             YES         NO → Use pre-built models
+              │
+        Enterprise/
+      Microsoft stack?
+              │
+        ┌─────┴─────┐
+       YES         NO → Consider Ollama instead
+        │
+    THIS GUIDE
+   (Foundry Local)
+```
+
+### Foundry Local vs. Alternatives
+
+```
+┌──────────────┬────────────────┬──────────────┬──────────────┐
+│ Feature      │ Foundry Local  │ Ollama       │ Cloud APIs   │
+├──────────────┼────────────────┼──────────────┼──────────────┤
+│ Privacy      │ 100% local ✓   │ 100% local ✓ │ Cloud ✗      │
+│ Format       │ ONNX           │ GGUF         │ Proprietary  │
+│ Enterprise   │ Yes ✓          │ Limited      │ Yes ✓        │
+│ MS Stack     │ Native ✓       │ No           │ Azure only   │
+│ Training     │ PyTorch        │ MLX/PyTorch  │ N/A          │
+│ Speed (Mac)  │ Good           │ Excellent    │ Variable     │
+│ Offline      │ Yes ✓          │ Yes ✓        │ No ✗         │
+│ Cost         │ Hardware only  │ Hardware     │ Per-token    │
+└──────────────┴────────────────┴──────────────┴──────────────┘
+```
+
+---
+
+## Key Differentiators
+
+### Why ONNX + Foundry Local?
+
+**1. Production-Grade Deployment**
+- Industry standard format (ONNX)
+- Enterprise support from Microsoft
+- Cross-platform compatibility (Windows, Linux, Mac)
+
+**2. Hardware Optimization**
+- ONNX Runtime leverages your M2 Pro Neural Engine
+- Automatic optimization for available hardware
+- Supports CPU, GPU, and NPU acceleration
+
+**3. Ecosystem Integration**
+- Compatible with Azure AI Foundry
+- OpenAI-compatible API (easy app integration)
+- Microsoft's enterprise AI tooling
+
+**4. Future-Proof**
+- ONNX is an open standard (won't be deprecated)
+- Active development by Microsoft and partners
+- Growing model catalog and tooling
+
+---
+
+## The Value Proposition
+
+### For Individuals
+```
+Before: Search through hundreds of pages manually
+After:  Ask AI assistant, get cited answers in seconds
+
+Before: Generic AI responses
+After:  Expert-level, domain-specific answers
+
+Before: Pay per API call, privacy concerns
+After:  One-time hardware cost, complete privacy
+```
+
+### For Organizations
+```
+Security:     Sensitive data never leaves premises
+Compliance:   No data governance issues with cloud
+Cost:         No per-token charges, predictable costs
+Control:      Full control over model behavior and updates
+Integration:  Microsoft stack compatibility (Azure, Office, etc.)
+```
+
+---
+
+## Success Metrics
+
+After completing this guide, you'll be able to:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         CONCRETE OUTCOMES                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  □ Query 10,000+ pages of documents with cited answers          │
+│                                                                  │
+│  □ Fine-tune models in 2-4 hours on your Mac                    │
+│                                                                  │
+│  □ Convert any PyTorch model to ONNX format                     │
+│                                                                  │
+│  □ Deploy custom models via Foundry Local                       │
+│                                                                  │
+│  □ Integrate AI into apps via OpenAI-compatible API             │
+│                                                                  │
+│  □ Maintain complete data privacy (no cloud)                    │
+│                                                                  │
+│  □ Customize AI behavior through training examples              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Comparison: Before and After
+
+### The Old Way (Cloud APIs)
+```
+Your Question
+     ↓
+Send to Cloud (privacy risk)
+     ↓
+Generic AI (no custom training)
+     ↓
+No document access (hallucinations)
+     ↓
+Pay per request
+     ↓
+Generic Answer
+```
+
+### The New Way (This Guide)
+```
+Your Question
+     ↓
+Local Processing (private)
+     ↓
+Custom-Trained Model (your style)
+     ↓
+RAG System (your documents)
+     ↓
+One-time hardware cost
+     ↓
+Expert-Level, Cited Answer
+```
+
+---
+
+## Risk Assessment
+
+### Low Risk ✓
+- All processing is local (no data leakage)
+- Open standards (ONNX, not vendor lock-in)
+- Well-tested tools (PyTorch, Foundry Local)
+- Active community support
+
+### Medium Risk ⚠
+- Training quality depends on your examples (GIGO principle)
+- Model size limited by available RAM
+- Conversion process can be complex for beginners
+
+### Mitigation Strategies
+- Follow guide exactly (monkey-proof steps)
+- Start with small, proven models
+- Test thoroughly before production use
+- Keep backups of trained models
+
+---
+
+## Bottom Line
+
+**If you need:**
+- Private, on-device AI
+- Custom training for domain expertise
+- Document Q&A from your materials
+- Microsoft ecosystem compatibility
+- Production-grade deployment
+
+**Then this guide gives you:**
+- Complete workflow: documents → training → deployment
+- 5-8 hours to first working model
+- Runs on your existing Mac M2 Pro
+- Industry-standard tools and formats
+- Reusable pipeline for future models
+
+**The alternative:** Pay cloud APIs forever, accept privacy risks, settle for generic responses, and can't access your documents effectively.
+
+**The investment:** One weekend to set up, then query your AI assistant indefinitely at no additional cost.
+
+
 # Complete Guide: Train Models for Foundry Local on Mac M2 Pro
 
 ## For Someone Who Knows Nothing About LLMs
